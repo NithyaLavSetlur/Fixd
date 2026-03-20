@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/tab_wake_up"
+        android:icon="@drawable/ic_tab_wake_up"
+        android:title="@string/problem_wake_up" />
+    <item
+        android:id="@+id/tab_sleep_schedule"
+        android:icon="@drawable/ic_tab_sleep_schedule"
+        android:title="@string/problem_sleep_schedule" />
+    <item
+        android:id="@+id/tab_time_management"
+        android:icon="@drawable/ic_tab_time_management"
+        android:title="@string/problem_time_management" />
+    <item
+        android:id="@+id/tab_transport"
+        android:icon="@drawable/ic_tab_transport"
+        android:title="@string/problem_transport" />
+    <item
+        android:id="@+id/tab_placeholder"
+        android:icon="@drawable/ic_tab_placeholder"
+        android:title="@string/problem_placeholder" />
+</menu>

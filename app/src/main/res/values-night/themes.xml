@@ -1,0 +1,51 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.Fixd" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/brand_primary</item>
+        <item name="colorPrimaryVariant">@color/brand_primary_dark</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/brand_secondary</item>
+        <item name="colorSecondaryVariant">@color/brand_secondary</item>
+        <item name="colorOnSecondary">@color/white</item>
+        <item name="colorSurface">@color/brand_surface</item>
+        <item name="colorOnSurface">@color/brand_text</item>
+        <item name="android:windowBackground">@color/brand_surface</item>
+        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+        <item name="android:navigationBarColor">@color/white</item>
+        <item name="materialButtonStyle">@style/Widget.Fixd.Button</item>
+        <item name="editTextStyle">@style/Widget.Fixd.TextInputEditText</item>
+        <item name="textInputStyle">@style/Widget.Fixd.TextInputLayout</item>
+    </style>
+
+    <style name="Theme.Fixd.Splash" parent="Theme.Fixd">
+        <item name="android:windowBackground">@drawable/bg_splash</item>
+    </style>
+
+    <style name="Theme.Fixd.Alarm" parent="Theme.Fixd">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/brand_primary_dark</item>
+    </style>
+
+    <style name="Widget.Fixd.Button" parent="Widget.MaterialComponents.Button">
+        <item name="cornerRadius">16dp</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+
+    <style name="Widget.Fixd.TextInputLayout" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+        <item name="boxBackgroundColor">@color/white</item>
+        <item name="boxStrokeColor">@color/brand_accent</item>
+        <item name="boxCornerRadiusTopStart">18dp</item>
+        <item name="boxCornerRadiusTopEnd">18dp</item>
+        <item name="boxCornerRadiusBottomStart">18dp</item>
+        <item name="boxCornerRadiusBottomEnd">18dp</item>
+        <item name="hintTextColor">@color/brand_text_muted</item>
+        <item name="android:textColorHint">@color/brand_text_muted</item>
+    </style>
+
+    <style name="Widget.Fixd.TextInputEditText" parent="Widget.MaterialComponents.TextInputEditText.OutlinedBox">
+        <item name="android:textColor">@color/brand_text</item>
+        <item name="android:textColorHint">@color/brand_text_muted</item>
+        <item name="android:textCursorDrawable">@null</item>
+    </style>
+</resources>
