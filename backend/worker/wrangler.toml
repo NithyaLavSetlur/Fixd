@@ -1,0 +1,6 @@
+name = "fixd-wake-validator"
+main = "src/index.js"
+compatibility_date = "2026-03-20"
+
+[vars]
+FIREBASE_PROJECT_ID = "fixd-4ae81"

@@ -1,0 +1,15 @@
+{
+  "name": "fixd-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@google/genai": "^1.10.0",
+    "jose": "^5.9.6"
+  },
+  "devDependencies": {
+    "wrangler": "^4.9.0"
+  }
+}
