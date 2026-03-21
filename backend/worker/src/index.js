@@ -39,9 +39,12 @@ For text:
 - Reject if the text is blank, vague, meaningless, generic, repetitive, obviously unrelated, spammy, or looks copied/generated without personal specifics.
 
 For images:
+- First check whether the image contains readable handwritten or printed text.
+- If the image shows a note, whiteboard, notebook, or paper, read the text from the image and judge that text using the same standard as typed text.
+- Accept note photos if the visible text is a genuine plan for the day, affirmation, motivation, or to-do list that suggests the user is up and engaging with the day.
 - Accept only if the image appears to be a genuine camera photo that plausibly shows the user is awake or engaged in a real wake-up task.
-- Examples that can pass: a fresh selfie, the room/desk/bathroom/kitchen in a natural live photo, getting dressed, brushing teeth, breakfast setup, an authentic handwritten to-do list.
-- Reject screenshots, black frames, heavily blurred/obscured images, obvious stock/generated images, memes, random unrelated objects, or content that does not plausibly indicate the user is awake and responding now.
+- Examples that can pass: a fresh selfie, the room/desk/bathroom/kitchen in a natural live photo, getting dressed, brushing teeth, breakfast setup, or an authentic handwritten note with a plan/affirmation for today.
+- Reject screenshots, black frames, heavily blurred/obscured images, obvious stock/generated images, memes, random unrelated objects, or note photos whose text is unreadable, empty, generic, or unrelated to starting the day.
 
 If both text and image are present, accept if the overall submission is credible.
 Be reasonably strict. Prefer rejecting weak, generic, or suspicious submissions.

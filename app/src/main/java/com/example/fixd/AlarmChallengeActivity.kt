@@ -24,14 +24,21 @@ class AlarmChallengeActivity : AppCompatActivity() {
     private var localImagePath: String = ""
     private var imageBytes: ByteArray? = null
     private var validationPassed = false
+    private var isLaunchingCamera = false
     private val handler = Handler(Looper.getMainLooper())
 
     private val takePictureLauncher =
         registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+            isLaunchingCamera = false
             if (success) {
                 val file = currentPhotoFile ?: return@registerForActivityResult
                 imageBytes = WakeValidationApi.compressImage(file.absolutePath)
                 binding.photoStatus.text = getString(R.string.alarm_photo_ready)
+            } else {
+                currentPhotoFile = null
+                localImagePath = ""
+                imageBytes = null
+                binding.photoStatus.text = getString(R.string.alarm_photo_pending)
             }
         }
 
@@ -72,6 +79,7 @@ class AlarmChallengeActivity : AppCompatActivity() {
         currentPhotoFile = imageFile
         val photoUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", imageFile)
         localImagePath = imageFile.absolutePath
+        isLaunchingCamera = true
         takePictureLauncher.launch(photoUri)
     }
 
@@ -127,8 +135,10 @@ class AlarmChallengeActivity : AppCompatActivity() {
                     binding.progressBar.isVisible = false
                     binding.submitButton.isEnabled = true
                     sendAlarmServiceAction(AlarmRingingService.ACTION_RESUME)
-                    binding.feedbackText.text = getString(R.string.alarm_validation_backend_unavailable)
-                    toast(exception.localizedMessage ?: getString(R.string.alarm_validation_failed))
+                    val errorMessage = exception.localizedMessage?.takeIf { it.isNotBlank() }
+                        ?: getString(R.string.alarm_validation_backend_unavailable)
+                    binding.feedbackText.text = errorMessage
+                    toast(errorMessage)
                 }
             }
         )
@@ -195,9 +205,9 @@ class AlarmChallengeActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        if (!validationPassed) {
+        if (!validationPassed && !isLaunchingCamera) {
             handler.postDelayed({
-                if (!isFinishing && !isDestroyed) {
+                if (!isFinishing && !isDestroyed && !isLaunchingCamera) {
                     startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP))
                 }
             }, 350)

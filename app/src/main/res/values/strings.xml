@@ -132,11 +132,11 @@
     <string name="alarm_notification_title">Wake up challenge</string>
     <string name="alarm_notification_body">Open Fixd and complete your wake-up task.</string>
     <string name="alarm_challenge_title">Start your day properly</string>
-    <string name="alarm_challenge_body">Type a goal, affirmation, or to-do list, or upload a photo. The alarm will keep ringing until the response is accepted.</string>
+    <string name="alarm_challenge_body">Type a goal, affirmation, or to-do list, or take a photo of a handwritten note. The validator checks whether it shows you are genuinely ready to start the day.</string>
     <string name="alarm_input_hint">Type your plan for the day</string>
-    <string name="alarm_capture_photo">Take photo instead</string>
+    <string name="alarm_capture_photo">Take photo of written note</string>
     <string name="alarm_photo_pending">No photo attached yet.</string>
-    <string name="alarm_photo_ready">Photo captured and ready to submit.</string>
+    <string name="alarm_photo_ready">Photo captured. Submit it so the validator can read the note.</string>
     <string name="alarm_submit">Validate and stop alarm</string>
     <string name="alarm_submission_required">Add text or a photo before submitting.</string>
     <string name="alarm_retry_needed">That response was not accepted. Try again with a clearer goal, list, or affirmation.</string>
@@ -145,5 +145,5 @@
     <string name="alarm_exit_blocked">Complete the wake-up challenge before leaving.</string>
     <string name="wake_validation_missing">Wake validation endpoint is not configured yet.</string>
     <string name="wake_validation_endpoint"
-        translatable="false">https://fixd.workers.dev/</string>
+        translatable="false">https://fixd-wake-validator.fixd.workers.dev/</string>
 </resources>

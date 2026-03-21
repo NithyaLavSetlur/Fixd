@@ -5,7 +5,10 @@
     android:background="@drawable/bg_tab_card"
     android:gravity="center"
     android:orientation="vertical"
-    android:padding="24dp">
+    android:paddingStart="24dp"
+    android:paddingTop="18dp"
+    android:paddingEnd="24dp"
+    android:paddingBottom="20dp">
 
     <TextView
         android:id="@+id/tabNumberBadge"

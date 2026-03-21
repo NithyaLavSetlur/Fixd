@@ -2,11 +2,16 @@ package com.example.fixd
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.widget.ImageView
 import android.view.MenuItem
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.GravityCompat
+import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import com.example.fixd.databinding.ActivityDashboardBinding
+import com.google.android.material.bottomnavigation.BottomNavigationMenuView
 import com.google.android.material.navigation.NavigationView
 import com.google.firebase.auth.FirebaseAuth
 
@@ -34,10 +39,15 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
         }
         binding.navigationView.setNavigationItemSelectedListener(this)
         binding.bottomNavigationView.setOnItemSelectedListener { item ->
+            animateBottomNavIcon(item.itemId)
             ProblemArea.fromMenuItemId(item.itemId)?.let { area ->
                 showProblemTab(area)
                 true
             } ?: false
+        }
+        binding.bottomNavigationView.setOnItemReselectedListener { item ->
+            animateBottomNavIcon(item.itemId)
+            ProblemArea.fromMenuItemId(item.itemId)?.let(::showProblemTab)
         }
 
         loadProfile(initialLoad = savedInstanceState == null)
@@ -110,6 +120,44 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
             .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
             .replace(R.id.fragmentContainer, HomeFragment.newInstance(selectedProblems))
             .commit()
+    }
+
+    private fun animateBottomNavIcon(itemId: Int) {
+        val menuView = binding.bottomNavigationView.getChildAt(0) as? BottomNavigationMenuView ?: return
+        val itemView = menuView.findViewById<View>(itemId) ?: return
+        val iconView = itemView.findViewById<ImageView>(com.google.android.material.R.id.navigation_bar_item_icon_view)
+            ?: return
+
+        iconView.animate().cancel()
+        iconView.rotation = 0f
+        iconView.scaleX = 1f
+        iconView.scaleY = 1f
+
+        iconView.animate()
+            .rotation(-12f)
+            .scaleX(0.9f)
+            .scaleY(0.9f)
+            .setDuration(70)
+            .setInterpolator(AccelerateDecelerateInterpolator())
+            .withEndAction {
+                iconView.animate()
+                    .rotation(10f)
+                    .scaleX(1.12f)
+                    .scaleY(1.12f)
+                    .setDuration(110)
+                    .setInterpolator(FastOutSlowInInterpolator())
+                    .withEndAction {
+                        iconView.animate()
+                            .rotation(0f)
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(120)
+                            .setInterpolator(FastOutSlowInInterpolator())
+                            .start()
+                    }
+                    .start()
+            }
+            .start()
     }
 
     private fun showInfoPage(title: String, body: String, cta: String? = null) {

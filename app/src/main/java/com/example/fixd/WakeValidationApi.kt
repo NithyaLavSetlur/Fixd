@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
+import org.json.JSONException
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
@@ -41,7 +42,7 @@ object WakeValidationApi {
                 }
                 val responseText = responseStream?.bufferedReader()?.use { it.readText() }.orEmpty()
                 if (connection.responseCode !in 200..299) {
-                    throw IllegalStateException(responseText.ifBlank { "Validation request failed." })
+                    throw IllegalStateException(extractErrorMessage(responseText))
                 }
                 val json = JSONObject(responseText)
                 onSuccess(
@@ -54,6 +55,21 @@ object WakeValidationApi {
                 onFailure(exception)
             }
         }.start()
+    }
+
+    private fun extractErrorMessage(responseText: String): String {
+        if (responseText.isBlank()) {
+            return "Validation request failed."
+        }
+
+        return try {
+            val json = JSONObject(responseText)
+            json.optString("feedback").takeIf { it.isNotBlank() }
+                ?: json.optString("message").takeIf { it.isNotBlank() }
+                ?: responseText
+        } catch (_: JSONException) {
+            responseText
+        }
     }
 
     fun compressImage(path: String): ByteArray {
