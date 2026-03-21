@@ -1,6 +1,7 @@
 package com.example.fixd
 
-import android.net.Uri
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -10,6 +11,7 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.view.isVisible
 import com.example.fixd.databinding.ActivityAlarmChallengeBinding
@@ -32,13 +34,33 @@ class AlarmChallengeActivity : AppCompatActivity() {
             isLaunchingCamera = false
             if (success) {
                 val file = currentPhotoFile ?: return@registerForActivityResult
-                imageBytes = WakeValidationApi.compressImage(file.absolutePath)
-                binding.photoStatus.text = getString(R.string.alarm_photo_ready)
+                val compressed = runCatching { WakeValidationApi.compressImage(file.absolutePath) }.getOrNull()
+                if (compressed != null && compressed.isNotEmpty()) {
+                    imageBytes = compressed
+                    binding.photoStatus.text = getString(R.string.alarm_photo_ready)
+                    submitChallenge()
+                } else {
+                    currentPhotoFile = null
+                    localImagePath = ""
+                    imageBytes = null
+                    binding.photoStatus.text = getString(R.string.alarm_photo_failed)
+                    toast(R.string.alarm_photo_failed)
+                }
             } else {
                 currentPhotoFile = null
                 localImagePath = ""
                 imageBytes = null
                 binding.photoStatus.text = getString(R.string.alarm_photo_pending)
+            }
+        }
+
+    private val requestCameraPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                launchCamera()
+            } else {
+                binding.photoStatus.text = getString(R.string.alarm_camera_permission_required)
+                toast(R.string.alarm_camera_permission_required)
             }
         }
 
@@ -68,22 +90,54 @@ class AlarmChallengeActivity : AppCompatActivity() {
             }
         })
 
-        binding.capturePhotoButton.setOnClickListener { launchCamera() }
+        binding.capturePhotoButton.setOnClickListener { openCameraForNotePhoto() }
         binding.submitButton.setOnClickListener { submitChallenge() }
         binding.alarmNameText.text = intent.getStringExtra(AlarmReceiver.EXTRA_ALARM_NAME).orEmpty()
     }
 
+    private fun openCameraForNotePhoto() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            return
+        }
+
+        launchCamera()
+    }
+
     private fun launchCamera() {
-        val imageDir = File(cacheDir, "images").apply { mkdirs() }
-        val imageFile = File(imageDir, "wake-${System.currentTimeMillis()}.jpg")
-        currentPhotoFile = imageFile
-        val photoUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", imageFile)
-        localImagePath = imageFile.absolutePath
-        isLaunchingCamera = true
-        takePictureLauncher.launch(photoUri)
+        val photoUri = runCatching {
+            val imageDir = File(cacheDir, "images").apply { mkdirs() }
+            val imageFile = File(imageDir, "wake-${System.currentTimeMillis()}.jpg")
+            currentPhotoFile = imageFile
+            localImagePath = imageFile.absolutePath
+            FileProvider.getUriForFile(this, "$packageName.fileprovider", imageFile)
+        }.getOrElse { error ->
+            currentPhotoFile = null
+            localImagePath = ""
+            imageBytes = null
+            binding.photoStatus.text = getString(R.string.alarm_photo_failed)
+            toast(error.localizedMessage ?: getString(R.string.alarm_photo_failed))
+            return
+        }
+
+        try {
+            isLaunchingCamera = true
+            takePictureLauncher.launch(photoUri)
+        } catch (error: Exception) {
+            isLaunchingCamera = false
+            currentPhotoFile = null
+            localImagePath = ""
+            imageBytes = null
+            binding.photoStatus.text = getString(R.string.alarm_photo_failed)
+            toast(error.localizedMessage ?: getString(R.string.alarm_photo_failed))
+        }
     }
 
     private fun submitChallenge() {
+        if (binding.progressBar.isVisible) return
+
         val text = binding.challengeInput.text?.toString()?.trim().orEmpty()
         if (text.isBlank() && imageBytes == null) {
             toast(R.string.alarm_submission_required)
