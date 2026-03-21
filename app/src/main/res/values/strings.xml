@@ -136,7 +136,9 @@
     <string name="alarm_input_hint">Type your plan for the day</string>
     <string name="alarm_capture_photo">Take photo of written note</string>
     <string name="alarm_photo_pending">No photo attached yet.</string>
-    <string name="alarm_photo_ready">Photo captured. Submit it so the validator can read the note.</string>
+    <string name="alarm_photo_ready">Photo captured. Sending it to the validator now.</string>
+    <string name="alarm_photo_failed">The camera could not capture a photo. Try again.</string>
+    <string name="alarm_camera_permission_required">Camera permission is required to photograph a written note.</string>
     <string name="alarm_submit">Validate and stop alarm</string>
     <string name="alarm_submission_required">Add text or a photo before submitting.</string>
     <string name="alarm_retry_needed">That response was not accepted. Try again with a clearer goal, list, or affirmation.</string>
