@@ -1,0 +1,171 @@
+package com.example.fixd
+
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.LinearLayout
+import androidx.core.view.isVisible
+import androidx.fragment.app.Fragment
+import com.example.fixd.databinding.FragmentWakeHistoryBinding
+import com.example.fixd.databinding.ViewHistoryTileBinding
+import com.google.firebase.auth.FirebaseAuth
+import kotlin.math.max
+
+class WakeHistoryFragment : Fragment() {
+
+    private var _binding: FragmentWakeHistoryBinding? = null
+    private val binding get() = _binding!!
+    private lateinit var auth: FirebaseAuth
+    private var allSubmissions: List<WakeSubmission> = emptyList()
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        _binding = FragmentWakeHistoryBinding.inflate(inflater, container, false)
+        return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        auth = FirebaseAuth.getInstance()
+        setupFilters()
+        loadHistory()
+    }
+
+    private fun setupFilters() {
+        binding.typeFilterSpinner.adapter = buildAdapter(R.array.wake_history_type_filters)
+        binding.timeFilterSpinner.adapter = buildAdapter(R.array.wake_history_time_filters)
+        binding.durationFilterSpinner.adapter = buildAdapter(R.array.wake_history_duration_filters)
+
+        val listener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                renderHistory()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+
+        binding.typeFilterSpinner.onItemSelectedListener = listener
+        binding.timeFilterSpinner.onItemSelectedListener = listener
+        binding.durationFilterSpinner.onItemSelectedListener = listener
+    }
+
+    private fun buildAdapter(arrayRes: Int): ArrayAdapter<String> {
+        return ArrayAdapter(
+            requireContext(),
+            android.R.layout.simple_spinner_dropdown_item,
+            resources.getStringArray(arrayRes).toList()
+        )
+    }
+
+    private fun loadHistory() {
+        val user = auth.currentUser ?: return
+        AlarmRepository.getSuccessfulSubmissions(
+            userId = user.uid,
+            onSuccess = { submissions ->
+                allSubmissions = submissions
+                renderHistory()
+            },
+            onFailure = {
+                binding.historyEmptyText.isVisible = true
+                binding.historyEmptyText.text = it.localizedMessage ?: getString(R.string.firebase_not_ready)
+                binding.historyCountText.text = ""
+            }
+        )
+    }
+
+    private fun renderHistory() {
+        val filtered = allSubmissions.filter(::matchesSelectedFilters)
+        binding.historyRows.removeAllViews()
+        binding.historyCountText.text = resources.getQuantityString(
+            R.plurals.wake_history_result_count,
+            filtered.size,
+            filtered.size
+        )
+        binding.historyEmptyText.isVisible = filtered.isEmpty()
+        if (filtered.isEmpty()) return
+
+        filtered.chunked(2).forEach { rowItems ->
+            val rowLayout = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            }
+
+            rowItems.forEachIndexed { index, submission ->
+                val tileBinding = ViewHistoryTileBinding.inflate(layoutInflater, rowLayout, false)
+                tileBinding.tileDate.text = WakeSubmissionUi.formatDate(WakeSubmissionUi.primaryTimestamp(submission))
+                tileBinding.tileAlarmTime.text = getString(
+                    R.string.wake_history_tile_alarm_time,
+                    WakeSubmissionUi.formatAlarmTime(submission.alarmHour, submission.alarmMinute)
+                )
+                tileBinding.tileType.text = WakeSubmissionUi.typeLabel(requireContext(), submission)
+                tileBinding.tileWakeStatus.text = WakeSubmissionUi.wakeStatusLabel(requireContext(), submission)
+                WakeSubmissionUi.bindWakeStatus(tileBinding.tileWakeStatus, submission)
+                tileBinding.root.setOnClickListener {
+                    WakeSubmissionUi.showDetails(requireContext(), layoutInflater, submission)
+                }
+
+                val params = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = if (index == 0 && rowItems.size > 1) dp(6) else 0
+                    marginStart = if (index == 1) dp(6) else 0
+                }
+                rowLayout.addView(tileBinding.root, params)
+            }
+
+            if (rowItems.size == 1) {
+                rowLayout.addView(View(requireContext()), LinearLayout.LayoutParams(0, 0, 1f).apply {
+                    marginStart = dp(6)
+                })
+            }
+
+            binding.historyRows.addView(rowLayout)
+        }
+    }
+
+    private fun matchesSelectedFilters(submission: WakeSubmission): Boolean {
+        val typeMatches = when (binding.typeFilterSpinner.selectedItemPosition) {
+            1 -> submission.type == "text"
+            2 -> submission.type == "image"
+            else -> true
+        }
+
+        val now = System.currentTimeMillis()
+        val ageMillis = max(0L, now - WakeSubmissionUi.primaryTimestamp(submission))
+        val timeMatches = when (binding.timeFilterSpinner.selectedItemPosition) {
+            1 -> ageMillis <= 7L * 24L * 60L * 60L * 1000L
+            2 -> ageMillis <= 30L * 24L * 60L * 60L * 1000L
+            3 -> ageMillis <= 365L * 24L * 60L * 60L * 1000L
+            else -> true
+        }
+
+        val durationSeconds = max(0L, submission.responseDurationMs / 1000L)
+        val durationMatches = when (binding.durationFilterSpinner.selectedItemPosition) {
+            1 -> durationSeconds <= 10L
+            2 -> durationSeconds in 11L..20L
+            3 -> durationSeconds in 21L..30L
+            4 -> durationSeconds in 31L..40L
+            5 -> durationSeconds in 41L..50L
+            6 -> durationSeconds >= 51L
+            else -> true
+        }
+
+        return typeMatches && timeMatches && durationMatches
+    }
+
+    private fun dp(value: Int): Int {
+        return (value * resources.displayMetrics.density).toInt()
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
+}

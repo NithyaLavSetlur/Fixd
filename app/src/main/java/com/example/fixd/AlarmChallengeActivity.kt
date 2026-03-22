@@ -65,11 +65,25 @@ class AlarmChallengeActivity : AppCompatActivity() {
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        UserPreferences.applyTheme(this)
+        ThemePaletteManager.applyOverlay(this)
         super.onCreate(savedInstanceState)
         binding = ActivityAlarmChallengeBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        AppBackgroundManager.applyToActivity(this)
 
         auth = FirebaseAuth.getInstance()
+        auth.currentUser?.let { user ->
+            UserAppearanceRepository.getAppearance(
+                userId = user.uid,
+                onSuccess = { settings ->
+                    AppBackgroundManager.updateSettings(settings)
+                    ThemePaletteManager.syncFromAppearance(this)
+                    AppBackgroundManager.applyToActivity(this)
+                },
+                onFailure = { }
+            )
+        }
         NotificationHelper.ensureChannels(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -221,7 +235,18 @@ class AlarmChallengeActivity : AppCompatActivity() {
                 completedAt = completedAt,
                 responseDurationMs = completedAt - triggeredAt
             ),
-            onSuccess = { },
+            onSuccess = { savedSubmission ->
+                WakeSubmissionCache.upsertSubmission(this, savedSubmission)
+                WakeWidgetUpdater.updateAll(this)
+                if (result.passed) {
+                    WakeFollowUpScheduler.schedule(
+                        context = this,
+                        userId = userId,
+                        submissionId = savedSubmission.id,
+                        triggerAtMillis = completedAt + WakeFollowUpScheduler.FOLLOW_UP_DELAY_MS
+                    )
+                }
+            },
             onFailure = { }
         )
 

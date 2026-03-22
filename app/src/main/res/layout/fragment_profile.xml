@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_tab_card"
@@ -90,6 +89,7 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/focusBody"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
@@ -102,40 +102,48 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:textColor="@color/brand_text"
-            android:text="@string/problem_wake_up" />
+            android:text="@string/problem_wake_up"
+            android:textColor="@color/brand_text" />
 
         <CheckBox
             android:id="@+id/sleepScheduleCheckbox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:textColor="@color/brand_text"
-            android:text="@string/problem_sleep_schedule" />
+            android:text="@string/problem_sleep_schedule"
+            android:textColor="@color/brand_text" />
 
         <CheckBox
             android:id="@+id/timeManagementCheckbox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:textColor="@color/brand_text"
-            android:text="@string/problem_time_management" />
+            android:text="@string/problem_time_management"
+            android:textColor="@color/brand_text" />
 
         <CheckBox
             android:id="@+id/transportCheckbox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:textColor="@color/brand_text"
-            android:text="@string/problem_transport" />
+            android:text="@string/problem_transport"
+            android:textColor="@color/brand_text" />
+
+        <CheckBox
+            android:id="@+id/socialMediaDistractionCheckbox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/problem_social_media_distraction"
+            android:textColor="@color/brand_text" />
 
         <CheckBox
             android:id="@+id/placeholderCheckbox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:textColor="@color/brand_text"
-            android:text="@string/problem_placeholder" />
+            android:text="@string/problem_placeholder"
+            android:textColor="@color/brand_text" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/saveProfileButton"

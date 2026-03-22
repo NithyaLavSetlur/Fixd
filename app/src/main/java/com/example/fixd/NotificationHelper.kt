@@ -8,6 +8,7 @@ import android.os.Build
 object NotificationHelper {
     const val ALARM_CHANNEL_ID = "fixd_alarm_channel"
     const val GENERAL_CHANNEL_ID = "fixd_general_channel"
+    const val FOLLOW_UP_NOTIFICATION_ID_BASE = 9000
 
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return

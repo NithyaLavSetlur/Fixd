@@ -2,7 +2,6 @@ package com.example.fixd
 
 import android.Manifest
 import android.app.AlertDialog
-import android.graphics.BitmapFactory
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -21,15 +20,14 @@ import com.example.fixd.databinding.ViewSubmissionCardBinding
 import com.google.android.material.timepicker.MaterialTimePicker
 import com.google.android.material.timepicker.TimeFormat
 import com.google.firebase.auth.FirebaseAuth
-import java.io.File
 import java.util.Locale
-import java.util.concurrent.TimeUnit
 
 class WakeUpFragment : Fragment() {
 
     private var _binding: FragmentWakeUpBinding? = null
     private val binding get() = _binding!!
     private lateinit var auth: FirebaseAuth
+    private var createAlarmRequested = false
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -57,8 +55,19 @@ class WakeUpFragment : Fragment() {
             }
             showAlarmEditor()
         }
+        binding.viewFullHistoryButton.setOnClickListener {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.wakeUpContainer, WakeHistoryFragment())
+                .addToBackStack("wake_history")
+                .commit()
+        }
 
         loadWakeData()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        consumePendingCreateAlarmAction()
     }
 
     private fun loadWakeData() {
@@ -233,44 +242,59 @@ class WakeUpFragment : Fragment() {
         AlarmRepository.getSuccessfulSubmissions(
             userId = user.uid,
             onSuccess = { submissions ->
+                WakeSubmissionCache.saveSubmissions(requireContext(), submissions)
+                WakeWidgetUpdater.updateAll(requireContext())
+                renderCurrentStreak(submissions)
+                val recentSubmissions = submissions.take(2)
                 binding.historyList.removeAllViews()
                 binding.historyEmpty.visibility = if (submissions.isEmpty()) View.VISIBLE else View.GONE
-                submissions.forEach { submission ->
+                binding.viewFullHistoryButton.visibility = if (submissions.isEmpty()) View.GONE else View.VISIBLE
+                recentSubmissions.forEach { submission ->
                     val itemView = layoutInflater.inflate(R.layout.view_submission_card, binding.historyList, false)
                     val itemBinding = ViewSubmissionCardBinding.bind(itemView)
-                    itemBinding.submissionType.text = getString(
-                        if (submission.type == "image") R.string.wake_history_image else R.string.wake_history_text
-                    )
+                    itemBinding.submissionType.text = WakeSubmissionUi.typeLabel(requireContext(), submission)
                     itemBinding.alarmMeta.text = getString(
                         R.string.wake_history_alarm_meta,
-                        formatTime(submission.alarmHour, submission.alarmMinute),
-                        formatDuration(submission.responseDurationMs)
+                        WakeSubmissionUi.formatAlarmTime(submission.alarmHour, submission.alarmMinute),
+                        WakeSubmissionUi.formatDuration(requireContext(), submission.responseDurationMs)
+                    )
+                    itemBinding.submissionDate.text = getString(
+                        R.string.wake_history_date_label,
+                        WakeSubmissionUi.formatDate(WakeSubmissionUi.primaryTimestamp(submission))
                     )
                     itemBinding.feedback.text = submission.feedback
-
-                    if (submission.type == "image" && submission.imagePath.isNotBlank()) {
-                        val file = File(submission.imagePath)
-                        if (file.exists()) {
-                            itemBinding.submissionPreview.visibility = View.VISIBLE
-                            itemBinding.submissionText.visibility = View.GONE
-                            itemBinding.submissionPreview.setImageBitmap(
-                                BitmapFactory.decodeFile(file.absolutePath)
-                            )
-                        } else {
-                            itemBinding.submissionPreview.visibility = View.GONE
-                            itemBinding.submissionText.visibility = View.VISIBLE
-                            itemBinding.submissionText.text = getString(R.string.wake_history_image_unavailable)
-                        }
+                    WakeSubmissionUi.bindWakeStatus(itemBinding.wakeStatus, submission)
+                    itemBinding.submissionPreview.visibility = View.GONE
+                    itemBinding.submissionText.visibility = View.VISIBLE
+                    itemBinding.submissionText.text = if (submission.type == "image") {
+                        getString(R.string.wake_history_preview_tap)
                     } else {
-                        itemBinding.submissionPreview.visibility = View.GONE
-                        itemBinding.submissionText.visibility = View.VISIBLE
-                        itemBinding.submissionText.text = submission.text
+                        submission.text
+                    }
+                    itemBinding.root.setOnClickListener {
+                        WakeSubmissionUi.showDetails(requireContext(), layoutInflater, submission)
                     }
                     binding.historyList.addView(itemView)
                 }
             },
             onFailure = { toast(it.localizedMessage ?: getString(R.string.firebase_not_ready)) }
         )
+    }
+
+    private fun renderCurrentStreak(submissions: List<WakeSubmission>) {
+        val streak = WakeStatsCalculator.calculate(submissions).currentStreak
+        binding.streakValue.text = when (streak) {
+            1 -> getString(R.string.wake_streak_day)
+            else -> getString(R.string.wake_streak_days, streak)
+        }
+    }
+
+    private fun consumePendingCreateAlarmAction() {
+        val activity = activity as? DashboardActivity ?: return
+        if (createAlarmRequested) return
+        if (!activity.consumeOpenAction(DashboardActivity.OPEN_ACTION_CREATE_ALARM)) return
+        createAlarmRequested = true
+        showAlarmEditor()
     }
 
     private fun formatTime(hour: Int, minute: Int): String {
@@ -321,17 +345,6 @@ class WakeUpFragment : Fragment() {
             7 to getString(R.string.day_sat)
         )
         return days.sorted().mapNotNull { labels[it] }.joinToString(" | ")
-    }
-
-    private fun formatDuration(durationMs: Long): String {
-        val totalSeconds = TimeUnit.MILLISECONDS.toSeconds(durationMs)
-        val minutes = totalSeconds / 60
-        val seconds = totalSeconds % 60
-        return if (minutes > 0) {
-            getString(R.string.wake_duration_minutes_seconds, minutes, seconds)
-        } else {
-            getString(R.string.wake_duration_seconds, seconds)
-        }
     }
 
     private fun toast(messageRes: Int) {

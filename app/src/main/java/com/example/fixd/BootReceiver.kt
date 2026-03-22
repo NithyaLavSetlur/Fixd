@@ -10,5 +10,6 @@ class BootReceiver : BroadcastReceiver() {
         LocalAlarmCache.getAlarms(context)
             .filter { it.enabled }
             .forEach { AlarmScheduler.schedule(context, it) }
+        WakeWidgetUpdater.updateAll(context)
     }
 }

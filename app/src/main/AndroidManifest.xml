@@ -61,6 +61,28 @@
             android:exported="false" />
 
         <receiver
+            android:name=".WakeFollowUpReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <receiver
+            android:name=".WakeFollowUpActionReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <receiver
+            android:name=".WakeStreakWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wake_streak_widget_info" />
+        </receiver>
+
+        <receiver
             android:name=".BootReceiver"
             android:enabled="true"
             android:exported="true">
