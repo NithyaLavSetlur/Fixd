@@ -22,6 +22,7 @@ class ProfileFragment : Fragment() {
     private var _binding: FragmentProfileBinding? = null
     private val binding get() = _binding!!
     private lateinit var auth: FirebaseAuth
+    private var currentProfile = UserProfile()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -48,24 +49,23 @@ class ProfileFragment : Fragment() {
         UserProfileRepository.getProfile(
             userId = user.uid,
             onSuccess = { profile ->
+                currentProfile = profile ?: UserProfile()
                 binding.nameEditText.setText(profile?.preferredName?.ifBlank { user.displayName.orEmpty() } ?: user.displayName.orEmpty())
                 bindProblemSelections(profile)
                 setupSelectionLimit()
+                updateFocusCopy()
             },
             onFailure = {
+                currentProfile = UserProfile()
                 binding.nameEditText.setText(user.displayName ?: "")
                 setupSelectionLimit()
+                updateFocusCopy()
                 toast(it.localizedMessage ?: getString(R.string.firebase_not_ready))
             }
         )
 
-        binding.saveProfileButton.setOnClickListener {
-            saveFocusAreas(user.uid)
-        }
-
-        binding.saveNameButton.setOnClickListener {
-            saveName(user.uid)
-        }
+        binding.saveProfileButton.setOnClickListener { saveFocusAreas(user.uid) }
+        binding.saveNameButton.setOnClickListener { saveName(user.uid) }
 
         binding.credentialsSection.isVisible = !isGoogleUser
         binding.sendVerificationButton.isVisible = !isGoogleUser && !user.isEmailVerified
@@ -82,55 +82,22 @@ class ProfileFragment : Fragment() {
     }
 
     private fun bindProblemSelections(profile: UserProfile?) {
-        val currentSelections = profile?.selectedProblems.orEmpty().mapNotNull { ProblemArea.fromName(it) }.toSet()
-        binding.wakeUpCheckbox.isChecked = ProblemArea.WAKE_UP in currentSelections
-        binding.sleepScheduleCheckbox.isChecked = ProblemArea.SLEEP_SCHEDULE in currentSelections
-        binding.timeManagementCheckbox.isChecked = ProblemArea.TIME_MANAGEMENT in currentSelections
-        binding.transportCheckbox.isChecked = ProblemArea.TRANSPORT in currentSelections
-        binding.placeholderCheckbox.isChecked = ProblemArea.PLACEHOLDER in currentSelections
-        configureAvailableSelections()
+        val currentSelections = profile?.availableProblems.orEmpty().mapNotNull { ProblemArea.fromName(it) }.toSet()
+        binding.wakeUpCheckbox.isChecked = ProblemArea.WAKE_UP in currentSelections || currentSelections.isEmpty()
+        configureWakeOnlySelection()
     }
 
     private fun setupSelectionLimit() {
-        val checkboxes = listOf(
-            binding.wakeUpCheckbox,
-            binding.sleepScheduleCheckbox,
-            binding.timeManagementCheckbox,
-            binding.transportCheckbox,
-            binding.placeholderCheckbox
-        )
-        checkboxes.forEach { checkbox ->
-            checkbox.setOnCheckedChangeListener { buttonView, isChecked ->
-                if (isChecked && selectedCount() > 2) {
-                    buttonView as CheckBox
-                    buttonView.isChecked = false
-                    toast(R.string.selection_max_two)
-                }
+        binding.wakeUpCheckbox.setOnCheckedChangeListener { buttonView, isChecked ->
+            if (!isChecked) {
+                (buttonView as CheckBox).isChecked = true
+                toast(R.string.profile_focus_wake_only)
             }
         }
     }
 
-    private fun configureAvailableSelections() {
-        listOf(
-            binding.sleepScheduleCheckbox,
-            binding.timeManagementCheckbox,
-            binding.transportCheckbox,
-            binding.placeholderCheckbox
-        ).forEach { checkbox ->
-            checkbox.isChecked = false
-            checkbox.isEnabled = false
-            checkbox.alpha = 0.45f
-        }
-    }
-
-    private fun selectedCount(): Int {
-        return listOf(
-            binding.wakeUpCheckbox,
-            binding.sleepScheduleCheckbox,
-            binding.timeManagementCheckbox,
-            binding.transportCheckbox,
-            binding.placeholderCheckbox
-        ).count { it.isChecked }
+    private fun updateFocusCopy() {
+        binding.focusBody.text = getString(R.string.profile_focus_wake_only_body)
     }
 
     private fun saveName(userId: String) {
@@ -141,22 +108,11 @@ class ProfileFragment : Fragment() {
             return
         }
 
-        val currentSelections = buildList {
-            if (binding.wakeUpCheckbox.isChecked) add(ProblemArea.WAKE_UP)
-            if (binding.sleepScheduleCheckbox.isChecked) add(ProblemArea.SLEEP_SCHEDULE)
-            if (binding.timeManagementCheckbox.isChecked) add(ProblemArea.TIME_MANAGEMENT)
-            if (binding.transportCheckbox.isChecked) add(ProblemArea.TRANSPORT)
-            if (binding.placeholderCheckbox.isChecked) add(ProblemArea.PLACEHOLDER)
-        }
-
         user.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(displayName).build())
             .addOnSuccessListener {
                 UserProfileRepository.saveProfile(
                     userId = userId,
-                    profile = UserProfile(
-                        preferredName = displayName,
-                        selectedProblems = currentSelections.map { it.name }
-                    ),
+                    profile = currentProfile.copy(preferredName = displayName),
                     onSuccess = {
                         toast(R.string.profile_name_saved)
                         (activity as? Host)?.onProfileUpdated()
@@ -172,24 +128,15 @@ class ProfileFragment : Fragment() {
         val displayName = binding.nameEditText.text?.toString()?.trim().orEmpty().ifBlank {
             user.displayName.orEmpty()
         }
-        val selectedProblems = buildList {
-            if (binding.wakeUpCheckbox.isChecked) add(ProblemArea.WAKE_UP)
-            if (binding.sleepScheduleCheckbox.isChecked) add(ProblemArea.SLEEP_SCHEDULE)
-            if (binding.timeManagementCheckbox.isChecked) add(ProblemArea.TIME_MANAGEMENT)
-            if (binding.transportCheckbox.isChecked) add(ProblemArea.TRANSPORT)
-            if (binding.placeholderCheckbox.isChecked) add(ProblemArea.PLACEHOLDER)
-        }
-
-        if (selectedProblems.size > 2) {
-            toast(R.string.selection_choose_two_or_less)
-            return
-        }
+        val availableProblems = listOf(ProblemArea.WAKE_UP.name)
+        val tabBarProblems = listOf(ProblemArea.WAKE_UP.name)
 
         UserProfileRepository.saveProfile(
             userId = userId,
-            profile = UserProfile(
+            profile = currentProfile.copy(
                 preferredName = displayName,
-                selectedProblems = selectedProblems.map { it.name }
+                availableProblems = availableProblems,
+                selectedProblems = tabBarProblems
             ),
             onSuccess = {
                 toast(R.string.profile_saved)
@@ -197,6 +144,22 @@ class ProfileFragment : Fragment() {
             },
             onFailure = { toast(it.localizedMessage ?: getString(R.string.firebase_not_ready)) }
         )
+    }
+
+    private fun configureWakeOnlySelection() {
+        listOf(
+            binding.sleepScheduleCheckbox,
+            binding.timeManagementCheckbox,
+            binding.transportCheckbox,
+            binding.socialMediaDistractionCheckbox,
+            binding.placeholderCheckbox
+        ).forEach { checkbox ->
+            checkbox.isChecked = false
+            checkbox.isEnabled = false
+            checkbox.alpha = 0.45f
+        }
+        binding.wakeUpCheckbox.isEnabled = true
+        binding.wakeUpCheckbox.alpha = 1f
     }
 
     private fun updateCredentials() {

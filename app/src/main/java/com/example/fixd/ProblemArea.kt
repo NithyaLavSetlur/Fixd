@@ -25,6 +25,12 @@ enum class ProblemArea(
         R.string.problem_transport_subtitle,
         R.drawable.ic_tab_transport
     ),
+    SOCIAL_MEDIA_DISTRACTION(
+        R.id.tab_social_media_distraction,
+        R.string.problem_social_media_distraction,
+        R.string.problem_social_media_distraction_subtitle,
+        R.drawable.ic_tab_social
+    ),
     PLACEHOLDER(
         R.id.tab_placeholder,
         R.string.problem_placeholder,

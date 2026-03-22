@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="wake_history_result_count">
+        <item quantity="one">%d submission</item>
+        <item quantity="other">%d submissions</item>
+    </plurals>
+</resources>

@@ -124,7 +124,7 @@
                 android:layout_marginTop="24dp"
                 android:paddingTop="14dp"
                 android:paddingBottom="14dp"
-                app:backgroundTint="@color/brand_primary" />
+                app:backgroundTint="?attr/colorPrimary" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/googleSignInButton"
@@ -171,7 +171,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_horizontal"
                 android:layout_marginTop="20dp"
-                android:textColor="@color/brand_secondary"
+                android:textColor="?attr/colorSecondary"
                 android:textSize="15sp"
                 android:textStyle="bold" />
         </LinearLayout>

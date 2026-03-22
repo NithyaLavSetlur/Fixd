@@ -1,6 +1,7 @@
 package com.example.fixd
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -8,23 +9,30 @@ import android.widget.ImageView
 import android.view.MenuItem
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.GravityCompat
+import androidx.core.content.ContextCompat
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import com.example.fixd.databinding.ActivityDashboardBinding
 import com.google.android.material.bottomnavigation.BottomNavigationMenuView
 import com.google.android.material.navigation.NavigationView
 import com.google.firebase.auth.FirebaseAuth
 
-class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener, ProfileFragment.Host {
+class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener, ProfileFragment.Host, HomeFragment.Host {
 
     private lateinit var binding: ActivityDashboardBinding
     private lateinit var auth: FirebaseAuth
     private var selectedProblems: List<ProblemArea> = emptyList()
+    private var activeDrawerItemId: Int = R.id.menu_home
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        UserPreferences.applyTheme(this)
+        ThemePaletteManager.applyOverlay(this)
         super.onCreate(savedInstanceState)
         binding = ActivityDashboardBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        AppBackgroundManager.applyToActivity(this)
+        applyTopChromeColors()
 
         auth = FirebaseAuth.getInstance()
         val user = auth.currentUser
@@ -33,6 +41,16 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
             finish()
             return
         }
+        UserAppearanceRepository.getAppearance(
+            userId = user.uid,
+            onSuccess = { settings ->
+                AppBackgroundManager.updateSettings(settings)
+                ThemePaletteManager.syncFromAppearance(this)
+                AppBackgroundManager.applyToActivity(this)
+                applyTopChromeColors()
+            },
+            onFailure = { }
+        )
 
         binding.menuButton.setOnClickListener {
             binding.drawerLayout.openDrawer(GravityCompat.START)
@@ -58,7 +76,10 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
         UserProfileRepository.getProfile(
             userId = user.uid,
             onSuccess = getProfileSuccess@{ profile ->
-                selectedProblems = profile?.selectedProblems.orEmpty().mapNotNull { ProblemArea.fromName(it) }
+                val effectiveSelection = profile?.selectedProblems
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: profile?.availableProblems.orEmpty()
+                selectedProblems = effectiveSelection.mapNotNull { ProblemArea.fromName(it) }
                 if (selectedProblems.isEmpty()) {
                     startActivity(Intent(this, ProblemSelectionActivity::class.java))
                     finish()
@@ -69,8 +90,8 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
                 configureBottomNavigation()
 
                 if (initialLoad) {
-                    binding.navigationView.setCheckedItem(R.id.menu_home)
-                    showHomePage()
+                    setDrawerSelection(R.id.menu_home)
+                    handleInitialDestination()
                 }
             },
             onFailure = {
@@ -95,6 +116,7 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
         selectedProblems.forEachIndexed { index, area ->
             menu.add(0, area.menuItemId, index, area.titleRes).setIcon(area.iconRes)
         }
+        binding.bottomNavigationView.itemBackground = ContextCompat.getDrawable(this, R.drawable.bg_bottom_nav_item)
         clearBottomNavSelection()
     }
 
@@ -105,7 +127,8 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     }
 
     private fun showProblemTab(area: ProblemArea) {
-        binding.navigationView.setCheckedItem(0)
+        clearDrawerSelection()
+        selectBottomNavigationItem(area.menuItemId)
         binding.screenTitle.text = getString(area.titleRes)
         supportFragmentManager.beginTransaction()
             .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
@@ -114,6 +137,7 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     }
 
     private fun showHomePage() {
+        setDrawerSelection(R.id.menu_home)
         clearBottomNavSelection()
         binding.screenTitle.text = getString(R.string.home_page_title)
         supportFragmentManager.beginTransaction()
@@ -162,6 +186,7 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
 
     private fun showInfoPage(title: String, body: String, cta: String? = null) {
         clearBottomNavSelection()
+        clearDrawerSelection()
         binding.screenTitle.text = title
         supportFragmentManager.beginTransaction()
             .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
@@ -178,6 +203,7 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     }
 
     private fun showProfilePage() {
+        setDrawerSelection(R.id.menu_profile)
         clearBottomNavSelection()
         binding.screenTitle.text = getString(R.string.profile_page_title)
         supportFragmentManager.beginTransaction()
@@ -186,20 +212,22 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
             .commit()
     }
 
+    private fun showSettingsPage() {
+        setDrawerSelection(R.id.menu_settings)
+        clearBottomNavSelection()
+        binding.screenTitle.text = getString(R.string.settings_page_title)
+        supportFragmentManager.beginTransaction()
+            .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
+            .replace(R.id.fragmentContainer, SettingsFragment())
+            .commit()
+    }
+
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_home -> showHomePage()
             R.id.menu_profile -> showProfilePage()
-            R.id.menu_settings -> showInfoPage(
-                title = getString(R.string.settings_page_title),
-                body = getString(R.string.settings_page_body),
-                cta = getString(R.string.settings_page_cta)
-            )
-            R.id.menu_premium -> showInfoPage(
-                title = getString(R.string.premium_page_title),
-                body = getString(R.string.premium_page_body),
-                cta = getString(R.string.premium_page_cta)
-            )
+            R.id.menu_settings -> showSettingsPage()
+            R.id.menu_premium -> showPremiumPage()
             R.id.menu_logout -> {
                 auth.signOut()
                 startActivity(Intent(this, AuthActivity::class.java))
@@ -216,5 +244,81 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
             loadProfile()
             showProfilePage()
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (selectedProblems.isNotEmpty()) {
+            handleInitialDestination()
+        }
+    }
+
+    private fun handleInitialDestination() {
+        val requestedArea = ProblemArea.fromName(intent.getStringExtra(EXTRA_OPEN_AREA).orEmpty())
+        if (requestedArea != null && selectedProblems.contains(requestedArea)) {
+            showProblemTab(requestedArea)
+        } else {
+            showHomePage()
+        }
+    }
+
+    fun consumeOpenAction(expectedAction: String): Boolean {
+        val currentIntent = intent ?: return false
+        val action = currentIntent.getStringExtra(EXTRA_OPEN_ACTION).orEmpty()
+        if (action != expectedAction) return false
+        currentIntent.removeExtra(EXTRA_OPEN_ACTION)
+        setIntent(currentIntent)
+        return true
+    }
+
+    private fun selectBottomNavigationItem(itemId: Int) {
+        repeat(binding.bottomNavigationView.menu.size()) { index ->
+            val item = binding.bottomNavigationView.menu.getItem(index)
+            item.isChecked = item.itemId == itemId
+        }
+    }
+
+    companion object {
+        const val EXTRA_OPEN_AREA = "open_area"
+        const val EXTRA_OPEN_ACTION = "open_action"
+        const val OPEN_ACTION_CREATE_ALARM = "create_alarm"
+    }
+
+    private fun showPremiumPage() {
+        setDrawerSelection(R.id.menu_premium)
+        clearBottomNavSelection()
+        binding.screenTitle.text = getString(R.string.premium_page_title)
+        supportFragmentManager.beginTransaction()
+            .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
+            .replace(R.id.fragmentContainer, PremiumFragment())
+            .commit()
+    }
+
+    override fun openHomeArea(area: ProblemArea) {
+        showProblemTab(area)
+    }
+
+    private fun setDrawerSelection(itemId: Int) {
+        activeDrawerItemId = itemId
+        binding.navigationView.setCheckedItem(itemId)
+    }
+
+    private fun clearDrawerSelection() {
+        activeDrawerItemId = 0
+        repeat(binding.navigationView.menu.size()) { index ->
+            binding.navigationView.menu.getItem(index).isChecked = false
+        }
+    }
+
+    private fun applyTopChromeColors() {
+        val isDarkMode =
+            (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        val topColor = ContextCompat.getColor(this, if (isDarkMode) R.color.black else R.color.white)
+        window.statusBarColor = topColor
+        (binding.menuButton.parent as? View)?.let { header ->
+            header.setBackgroundColor(topColor)
+        }
+        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !isDarkMode
     }
 }

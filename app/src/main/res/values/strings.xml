@@ -35,13 +35,18 @@
     <string name="auth_resend_verification">Resend verification email</string>
     <string name="firebase_not_ready">Firebase is not configured yet. Add google-services.json and enable Email/Password auth.</string>
     <string name="selection_title">Choose your first focus area</string>
-    <string name="selection_subtitle">Wake Up is the only live focus area right now. You can continue with one selected tab, and support for a second tab can be added later.</string>
+    <string name="selection_subtitle">Wake is the only focus area currently available right now.</string>
     <string name="selection_continue">Continue</string>
-    <string name="selection_skip">Select one to continue</string>
     <string name="selection_choose_two">Choose at least one focus area to continue.</string>
     <string name="selection_max_two">You can choose a maximum of two focus areas.</string>
     <string name="selection_choose_two_or_less">Choose one or two focus areas to save your profile.</string>
-    <string name="problem_wake_up">Wake Up</string>
+    <string name="selection_choose_at_least_one">Choose at least one focus area.</string>
+    <string name="selection_choose_one_to_three">Choose between 1 and 3 focus areas.</string>
+    <string name="selection_choose_one_to_six">Choose between 1 and 6 focus areas.</string>
+    <string name="selection_max_three_available">Free accounts can enable up to 3 focus areas.</string>
+    <string name="selection_max_six_available">Premium accounts can enable all 6 focus areas.</string>
+    <string name="selection_wake_only">Wake must stay selected here for now.</string>
+    <string name="problem_wake_up">Wake</string>
     <string name="problem_wake_up_subtitle">Create alarms that force a real start to the day with an AI-checked goal, affirmation, or to-do list.</string>
     <string name="problem_sleep_schedule">Sleep</string>
     <string name="problem_sleep_schedule_subtitle">Support for improving consistency around bedtime and overnight rest.</string>
@@ -49,7 +54,9 @@
     <string name="problem_time_management_subtitle">Tools for pacing, planning, and staying in control of your day.</string>
     <string name="problem_transport">Transport</string>
     <string name="problem_transport_subtitle">Help with planning journeys, avoiding rushes, and getting out the door on time.</string>
-    <string name="problem_placeholder">Coming Soon</string>
+    <string name="problem_social_media_distraction">Social</string>
+    <string name="problem_social_media_distraction_subtitle">Social media distraction limiting is not available yet. This tab is reserved for a future release.</string>
+    <string name="problem_placeholder">More</string>
     <string name="problem_placeholder_subtitle">A placeholder for the next support area you decide to add.</string>
     <string name="home_page_title">Home</string>
     <string name="home_page_body">Your current focus areas appear below for quick reference.</string>
@@ -60,9 +67,25 @@
     <string name="profile_unverified">Email not verified yet</string>
     <string name="profile_send_verification">Send verification email</string>
     <string name="profile_focus_title">Focus areas</string>
-    <string name="profile_focus_body">Choose up to two areas to keep in your tab bar.</string>
+    <string name="profile_focus_body">Choose the focus areas you want active.</string>
+    <string name="profile_focus_body_free">Free: enable up to 3 focus areas. The app will show up to 2 of them in the tab bar.</string>
+    <string name="profile_focus_body_premium">Premium: enable all focus areas and show up to 5 of them in the tab bar.</string>
+    <string name="profile_focus_wake_only_body">Only Wake can currently be selected from the profile page.</string>
+    <string name="profile_focus_wake_only">Wake must stay selected here for now.</string>
     <string name="profile_save_name">Save name</string>
     <string name="profile_save_focus">Save focus areas</string>
+    <string name="profile_background_title">App background</string>
+    <string name="profile_background_body">Pick a gallery image and tune brightness and blur before using it as the shared background across the app.</string>
+    <string name="profile_background_preview">Background preview</string>
+    <string name="profile_background_empty">No custom background selected yet.</string>
+    <string name="profile_background_choose">Choose background photo</string>
+    <string name="profile_background_apply">Apply background</string>
+    <string name="profile_background_remove">Remove background</string>
+    <string name="profile_background_brightness">Brightness: %1$d%%</string>
+    <string name="profile_background_blur">Blur: %1$d</string>
+    <string name="profile_background_saved">Background updated.</string>
+    <string name="profile_background_removed">Background removed.</string>
+    <string name="profile_background_required">Choose an image first.</string>
     <string name="profile_saved">Profile updated.</string>
     <string name="profile_name_saved">Name updated.</string>
     <string name="profile_name_required">Enter the name you want the app to use.</string>
@@ -80,11 +103,39 @@
     <string name="profile_no_credential_changes">Enter a new email or password to make a change.</string>
     <string name="profile_reauth_failed">Reauthentication failed. Sign in again and retry.</string>
     <string name="settings_page_title">Settings</string>
-    <string name="settings_page_body">Manage your preferences, notifications, and app behaviour from here as the settings experience expands.</string>
+    <string name="settings_page_body">Manage the theme mode and app background here. If you add a background, Fixd will match the app colours to it automatically.</string>
     <string name="settings_page_cta">Settings tools coming soon</string>
+    <string name="settings_theme_title">Appearance</string>
+    <string name="settings_theme_body">Choose whether Fixd follows the system theme, stays light, or stays dark.</string>
+    <string name="settings_theme_system">Use system setting</string>
+    <string name="settings_theme_light">Light mode</string>
+    <string name="settings_theme_dark">Dark mode</string>
+    <string name="settings_background_body">Upload a background image, preview it here, and Fixd will automatically use a matching colour theme. If there is no background, the default blue theme is used.</string>
     <string name="premium_page_title">Premium</string>
-    <string name="premium_page_body">Unlock advanced support features, deeper personalisation, and premium guidance. Payment flow is intentionally left as a placeholder for now.</string>
-    <string name="premium_page_cta">Upgrade options coming soon</string>
+    <string name="premium_page_body">Upgrade to Premium for $2 per month to unlock every focus area, keep up to 5 tabs visible in the tab bar, and remove the free focus-area cap.</string>
+    <string name="premium_page_cta">Unlock Premium</string>
+    <string name="premium_status_free">Free plan</string>
+    <string name="premium_status_active">Premium active</string>
+    <string name="premium_feature_one">Enable all 6 focus areas instead of 3.</string>
+    <string name="premium_feature_two">Show up to 5 focus tabs at once in the bottom bar.</string>
+    <string name="premium_feature_three">Restore your purchase on a new device with the same Play account.</string>
+    <string name="premium_purchase_button">Start $2/month</string>
+    <string name="premium_restore_button">Restore purchase</string>
+    <string name="premium_price_unavailable">Price unavailable</string>
+    <string name="premium_price_monthly">%1$s / month</string>
+    <string name="premium_price_fallback">$2.00 / month</string>
+    <string name="premium_purchase_success">Premium unlocked. Reopen Profile to enable more focus areas.</string>
+    <string name="premium_billing_unavailable">Premium billing is not available yet on this device.</string>
+    <string name="premium_billing_disconnected">Could not reach Google Play Billing. Try again.</string>
+    <string name="premium_active_summary">Premium is active on this account. You can enable all focus areas and show up to 5 tabs.</string>
+    <string name="premium_already_unlocked">Premium active</string>
+    <string name="premium_purchase_cancelled">Purchase cancelled.</string>
+    <string name="premium_subscription_inactive">No active Premium subscription was found for this account.</string>
+    <string name="premium_placeholder_price">$2.00 / month</string>
+    <string name="premium_placeholder_button">Payments coming soon</string>
+    <string name="premium_placeholder_secondary">Store setup pending</string>
+    <string name="premium_placeholder_body">Premium is still a placeholder for now. The feature list is here, but in-app payments are not turned on yet.</string>
+    <string name="premium_placeholder_note">Payments are disabled for now while store setup is still pending.</string>
     <string name="wake_intro">Set an exact alarm and require a valid text goal or photo before the alarm will stop.</string>
     <string name="wake_exact_alarm_enabled">Exact alarms are enabled on this device.</string>
     <string name="wake_exact_alarm_disabled">Exact alarms are not enabled yet. Tap create and allow exact alarms when prompted.</string>
@@ -107,14 +158,46 @@
     <string name="wake_alarm_every_day">Every day</string>
     <string name="wake_alarm_weekdays">Weekdays</string>
     <string name="wake_alarm_weekends">Weekends</string>
+    <string name="wake_streak_title">Current streak</string>
+    <string name="wake_streak_zero">0 days</string>
+    <string name="wake_streak_days">%1$d days</string>
+    <string name="wake_streak_day">1 day</string>
+    <string name="wake_streak_subtitle">Consecutive mornings you confirmed you stayed awake.</string>
     <string name="wake_history_title">Successful wake-up submissions</string>
     <string name="wake_history_empty">No successful wake-up submissions yet.</string>
+    <string name="wake_history_view_full">See full history</string>
+    <string name="wake_history_full_title">Full history</string>
+    <string name="wake_history_full_body">Browse every successful wake-up submission and filter the results.</string>
+    <string name="wake_history_filters_title">Filters</string>
+    <string name="wake_history_full_empty">No submissions match these filters.</string>
     <string name="wake_history_text">Text submission</string>
     <string name="wake_history_image">Photo submission</string>
     <string name="wake_history_image_unavailable">Photo history is only available on the device where it was captured.</string>
     <string name="wake_history_alarm_meta">Alarm %1$s • Completed in %2$s</string>
+    <string name="wake_history_date_label">Submitted %1$s</string>
+    <string name="wake_history_tile_alarm_time">Alarm %1$s</string>
+    <string name="wake_history_preview_tap">Tap to view the full submission.</string>
+    <string name="wake_history_status_awake">Awake</string>
+    <string name="wake_history_status_asleep">Fell back asleep</string>
+    <string name="wake_history_status_pending">Pending</string>
+    <string name="wake_history_detail_title">Submission details</string>
+    <string name="wake_history_detail_meta">%1$s • Alarm %2$s • Completed in %3$s • Verdict: %4$s</string>
+    <string name="wake_history_detail_ai_title">AI response</string>
+    <string name="wake_history_detail_input_title">Your submission</string>
+    <string name="wake_history_detail_ai_empty">No AI response was stored for this submission.</string>
+    <string name="wake_history_detail_image_only">This submission was completed with a photo.</string>
+    <string name="wake_history_detail_no_text">No text was stored for this submission.</string>
     <string name="wake_duration_seconds">%1$d sec</string>
     <string name="wake_duration_minutes_seconds">%1$d min %2$d sec</string>
+    <string name="wake_follow_up_title">Wake-up check-in</string>
+    <string name="wake_follow_up_body">Did you wake up and start getting ready after the alarm?</string>
+    <string name="wake_follow_up_yes">Yes</string>
+    <string name="wake_follow_up_no">No</string>
+    <string name="wake_status_awake_symbol">✓</string>
+    <string name="wake_status_asleep_symbol">X</string>
+    <string name="widget_wake_streak_label">Current wake streak</string>
+    <string name="widget_set_alarm">Set new alarm</string>
+    <string name="widget_wake_description">Shows your current wake streak, today’s wake result, and a shortcut to create a new alarm.</string>
     <string name="day_sunday">Sunday</string>
     <string name="day_monday">Monday</string>
     <string name="day_tuesday">Tuesday</string>
@@ -148,4 +231,27 @@
     <string name="wake_validation_missing">Wake validation endpoint is not configured yet.</string>
     <string name="wake_validation_endpoint"
         translatable="false">https://fixd-wake-validator.fixd.workers.dev/</string>
+
+    <string-array name="wake_history_type_filters">
+        <item>All submission types</item>
+        <item>Text submissions</item>
+        <item>Photo submissions</item>
+    </string-array>
+
+    <string-array name="wake_history_time_filters">
+        <item>Any time</item>
+        <item>Last week</item>
+        <item>Last month</item>
+        <item>Last year</item>
+    </string-array>
+
+    <string-array name="wake_history_duration_filters">
+        <item>Any completion time</item>
+        <item>0-10 seconds</item>
+        <item>10-20 seconds</item>
+        <item>20-30 seconds</item>
+        <item>30-40 seconds</item>
+        <item>40-50 seconds</item>
+        <item>50+ seconds</item>
+    </string-array>
 </resources>

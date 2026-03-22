@@ -6,11 +6,13 @@
         <item name="colorSecondary">@color/brand_secondary</item>
         <item name="colorSecondaryVariant">@color/brand_secondary</item>
         <item name="colorOnSecondary">@color/white</item>
+        <item name="gradientMidColor">@color/brand_gradient_mid</item>
         <item name="colorSurface">@color/brand_surface</item>
         <item name="colorOnSurface">@color/brand_text</item>
         <item name="android:windowBackground">@color/brand_surface</item>
-        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
-        <item name="android:navigationBarColor">@color/white</item>
+        <item name="android:statusBarColor">@color/brand_card</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:navigationBarColor">@color/brand_card</item>
         <item name="colorControlHighlight">@color/transparent</item>
         <item name="android:colorControlHighlight">@color/transparent</item>
         <item name="materialButtonStyle">@style/Widget.Fixd.Button</item>
@@ -27,6 +29,38 @@
         <item name="android:windowIsTranslucent">false</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@color/brand_primary_dark</item>
+    </style>
+
+    <style name="ThemeOverlay.Fixd.Palette.Ocean" parent="">
+        <item name="colorPrimary">#0F5D7A</item>
+        <item name="colorPrimaryVariant">#083C54</item>
+        <item name="colorSecondary">#2F8FCE</item>
+        <item name="colorSecondaryVariant">#2F8FCE</item>
+        <item name="gradientMidColor">#168AA7</item>
+    </style>
+
+    <style name="ThemeOverlay.Fixd.Palette.Mint" parent="">
+        <item name="colorPrimary">#157765</item>
+        <item name="colorPrimaryVariant">#0D5448</item>
+        <item name="colorSecondary">#45CFA8</item>
+        <item name="colorSecondaryVariant">#45CFA8</item>
+        <item name="gradientMidColor">#27A88C</item>
+    </style>
+
+    <style name="ThemeOverlay.Fixd.Palette.Sunset" parent="">
+        <item name="colorPrimary">#A44F3B</item>
+        <item name="colorPrimaryVariant">#6F3327</item>
+        <item name="colorSecondary">#E0895E</item>
+        <item name="colorSecondaryVariant">#E0895E</item>
+        <item name="gradientMidColor">#C8664D</item>
+    </style>
+
+    <style name="ThemeOverlay.Fixd.Palette.Orchid" parent="">
+        <item name="colorPrimary">#5D49B5</item>
+        <item name="colorPrimaryVariant">#3E327D</item>
+        <item name="colorSecondary">#A977E5</item>
+        <item name="colorSecondaryVariant">#A977E5</item>
+        <item name="gradientMidColor">#7B62CC</item>
     </style>
 
     <style name="Widget.Fixd.Button" parent="Widget.MaterialComponents.Button">
@@ -58,7 +92,7 @@
     </style>
 
     <style name="Widget.Fixd.TextInputLayout" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-        <item name="boxBackgroundColor">@color/white</item>
+        <item name="boxBackgroundColor">@color/brand_card</item>
         <item name="boxStrokeColor">@color/brand_accent</item>
         <item name="boxCornerRadiusTopStart">18dp</item>
         <item name="boxCornerRadiusTopEnd">18dp</item>

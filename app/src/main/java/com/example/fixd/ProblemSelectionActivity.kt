@@ -11,11 +11,15 @@ class ProblemSelectionActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityProblemSelectionBinding
     private lateinit var auth: FirebaseAuth
+    private var isPremium = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        UserPreferences.applyTheme(this)
+        ThemePaletteManager.applyOverlay(this)
         super.onCreate(savedInstanceState)
         binding = ActivityProblemSelectionBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        AppBackgroundManager.applyToActivity(this)
 
         auth = FirebaseAuth.getInstance()
         val user = auth.currentUser
@@ -24,15 +28,26 @@ class ProblemSelectionActivity : AppCompatActivity() {
             finish()
             return
         }
+        UserAppearanceRepository.getAppearance(
+            userId = user.uid,
+            onSuccess = { settings ->
+                AppBackgroundManager.updateSettings(settings)
+                ThemePaletteManager.syncFromAppearance(this)
+                AppBackgroundManager.applyToActivity(this)
+            },
+            onFailure = { }
+        )
 
         UserProfileRepository.getProfile(
             userId = user.uid,
             onSuccess = { profile ->
+                isPremium = profile?.isPremium == true
                 bindExistingSelection(profile)
-                configureAvailableSelections()
+                setupSelectionLimit()
             },
             onFailure = {
-                configureAvailableSelections()
+                isPremium = false
+                setupSelectionLimit()
                 toast(it.localizedMessage ?: getString(R.string.firebase_not_ready))
             }
         )
@@ -40,65 +55,74 @@ class ProblemSelectionActivity : AppCompatActivity() {
         binding.continueButton.setOnClickListener {
             saveSelections(user.uid)
         }
-        binding.skipButton.setOnClickListener {
-            Toast.makeText(this, R.string.selection_choose_two, Toast.LENGTH_SHORT).show()
-        }
     }
 
     private fun bindExistingSelection(profile: UserProfile?) {
-        val currentSelections = profile?.selectedProblems.orEmpty()
+        val currentSelections = profile?.availableProblems.orEmpty()
             .mapNotNull { ProblemArea.fromName(it) }
             .toSet()
-        binding.wakeUpCheckbox.isChecked = ProblemArea.WAKE_UP in currentSelections
-        binding.sleepScheduleCheckbox.isChecked = ProblemArea.SLEEP_SCHEDULE in currentSelections
-        binding.timeManagementCheckbox.isChecked = ProblemArea.TIME_MANAGEMENT in currentSelections
-        binding.transportCheckbox.isChecked = ProblemArea.TRANSPORT in currentSelections
-        binding.placeholderCheckbox.isChecked = ProblemArea.PLACEHOLDER in currentSelections
+        binding.wakeUpCheckbox.isChecked = ProblemArea.WAKE_UP in currentSelections || currentSelections.isEmpty()
+        configureWakeOnlySelection()
     }
 
-    private fun configureAvailableSelections() {
+    private fun setupSelectionLimit() {
+        binding.wakeUpCheckbox.setOnCheckedChangeListener { buttonView, checked ->
+            if (!checked) {
+                (buttonView as? android.widget.CheckBox)?.isChecked = true
+                Toast.makeText(this, R.string.selection_wake_only, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun saveSelections(userId: String) {
+        val selectedProblems = listOf(ProblemArea.WAKE_UP)
+
+        val currentName = auth.currentUser?.displayName.orEmpty()
+        UserProfileRepository.getProfile(
+            userId = userId,
+            onSuccess = { profile ->
+                val premium = profile?.isPremium == true
+                val availableProblems = listOf(ProblemArea.WAKE_UP.name)
+                val tabBarProblems = listOf(ProblemArea.WAKE_UP.name)
+                UserProfileRepository.saveProfile(
+                    userId = userId,
+                    profile = UserProfile(
+                        preferredName = currentName,
+                        availableProblems = availableProblems,
+                        selectedProblems = tabBarProblems,
+                        isPremium = premium,
+                        premiumSince = profile?.premiumSince ?: 0L
+                    ),
+                    onSuccess = {
+                        LocalAlarmCache.saveAlarms(this, emptyList())
+                        startActivity(Intent(this, DashboardActivity::class.java))
+                        finish()
+                    },
+                    onFailure = {
+                        toast(it.localizedMessage ?: getString(R.string.firebase_not_ready))
+                    }
+                )
+            },
+            onFailure = {
+                toast(it.localizedMessage ?: getString(R.string.firebase_not_ready))
+            }
+        )
+    }
+
+    private fun configureWakeOnlySelection() {
         listOf(
             binding.sleepScheduleCheckbox,
             binding.timeManagementCheckbox,
             binding.transportCheckbox,
+            binding.socialMediaDistractionCheckbox,
             binding.placeholderCheckbox
         ).forEach { checkbox ->
             checkbox.isChecked = false
             checkbox.isEnabled = false
             checkbox.alpha = 0.45f
         }
-    }
-
-    private fun saveSelections(userId: String) {
-        val selectedProblems = buildList {
-            if (binding.wakeUpCheckbox.isChecked) add(ProblemArea.WAKE_UP)
-            if (binding.sleepScheduleCheckbox.isChecked) add(ProblemArea.SLEEP_SCHEDULE)
-            if (binding.timeManagementCheckbox.isChecked) add(ProblemArea.TIME_MANAGEMENT)
-            if (binding.transportCheckbox.isChecked) add(ProblemArea.TRANSPORT)
-            if (binding.placeholderCheckbox.isChecked) add(ProblemArea.PLACEHOLDER)
-        }
-
-        if (selectedProblems.isEmpty() || selectedProblems.size > 2) {
-            Toast.makeText(this, R.string.selection_choose_two, Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val currentName = auth.currentUser?.displayName.orEmpty()
-        UserProfileRepository.saveProfile(
-            userId = userId,
-            profile = UserProfile(
-                preferredName = currentName,
-                selectedProblems = selectedProblems.map { it.name }
-            ),
-            onSuccess = {
-                LocalAlarmCache.saveAlarms(this, emptyList())
-                startActivity(Intent(this, DashboardActivity::class.java))
-                finish()
-            },
-            onFailure = {
-                toast(it.localizedMessage ?: getString(R.string.firebase_not_ready))
-            }
-        )
+        binding.wakeUpCheckbox.isEnabled = true
+        binding.wakeUpCheckbox.alpha = 1f
     }
 
     private fun toast(message: String) {

@@ -2,15 +2,16 @@
 <resources>
     <color name="brand_primary">#0F5D7A</color>
     <color name="brand_primary_dark">#083C54</color>
-    <color name="brand_secondary">#23B5AF</color>
+    <color name="brand_secondary">#2F8FCE</color>
     <color name="brand_surface">#EEF9F8</color>
     <color name="brand_card">#FFFFFFFF</color>
     <color name="brand_text">#103142</color>
     <color name="brand_text_muted">#5F7D88</color>
-    <color name="brand_accent">#67E0C7</color>
-    <color name="brand_success">#1F9D8B</color>
+    <color name="brand_accent">#79BFF0</color>
+    <color name="brand_success">#2F8FCE</color>
+    <color name="wake_status_asleep">#D14343</color>
     <color name="brand_gradient_mid">#168AA7</color>
-    <color name="brand_surface_tint">#D9F4F1</color>
+    <color name="brand_surface_tint">#DCECF8</color>
     <color name="white">#FFFFFFFF</color>
     <color name="black">#FF000000</color>
     <color name="transparent">#00000000</color>

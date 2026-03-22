@@ -10,6 +10,10 @@ import com.example.fixd.databinding.ViewFocusCardBinding
 
 class HomeFragment : Fragment() {
 
+    interface Host {
+        fun openHomeArea(area: ProblemArea)
+    }
+
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
 
@@ -36,6 +40,9 @@ class HomeFragment : Fragment() {
             itemBinding.focusIcon.setImageResource(area.iconRes)
             itemBinding.focusTitle.setText(area.titleRes)
             itemBinding.focusSubtitle.setText(area.subtitleRes)
+            itemBinding.root.setOnClickListener {
+                (activity as? Host)?.openHomeArea(area)
+            }
             binding.focusList.addView(itemView)
         }
     }

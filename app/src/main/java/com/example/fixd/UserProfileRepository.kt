@@ -22,7 +22,11 @@ object UserProfileRepository {
                 onSuccess(
                     UserProfile(
                         preferredName = snapshot.getString("preferredName").orEmpty(),
-                        selectedProblems = snapshot.get("selectedProblems") as? List<String> ?: emptyList()
+                        availableProblems = (snapshot.get("availableProblems") as? List<String>)
+                            ?: (snapshot.get("selectedProblems") as? List<String> ?: emptyList()),
+                        selectedProblems = snapshot.get("selectedProblems") as? List<String> ?: emptyList(),
+                        isPremium = snapshot.getBoolean("isPremium") ?: false,
+                        premiumSince = snapshot.getLong("premiumSince") ?: 0L
                     )
                 )
             }
@@ -39,7 +43,28 @@ object UserProfileRepository {
             .set(
                 mapOf(
                     "preferredName" to profile.preferredName,
-                    "selectedProblems" to profile.selectedProblems
+                    "availableProblems" to profile.availableProblems,
+                    "selectedProblems" to profile.selectedProblems,
+                    "isPremium" to profile.isPremium,
+                    "premiumSince" to profile.premiumSince
+                )
+            )
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener(onFailure)
+    }
+
+    fun updatePremiumStatus(
+        userId: String,
+        isPremium: Boolean,
+        premiumSince: Long,
+        onSuccess: () -> Unit,
+        onFailure: (Exception) -> Unit
+    ) {
+        usersCollection.document(userId)
+            .update(
+                mapOf(
+                    "isPremium" to isPremium,
+                    "premiumSince" to premiumSince
                 )
             )
             .addOnSuccessListener { onSuccess() }

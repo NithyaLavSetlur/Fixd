@@ -52,9 +52,12 @@ class AuthActivity : AppCompatActivity() {
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        UserPreferences.applyTheme(this)
+        ThemePaletteManager.applyOverlay(this)
         super.onCreate(savedInstanceState)
         binding = ActivityAuthBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        AppBackgroundManager.applyToActivity(this)
 
         val firebaseApp = FirebaseApp.initializeApp(this)
         if (firebaseApp == null) {

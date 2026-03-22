@@ -77,27 +77,42 @@ object AlarmRepository {
     fun saveSubmission(
         userId: String,
         submission: WakeSubmission,
+        onSuccess: (WakeSubmission) -> Unit,
+        onFailure: (Exception) -> Unit
+    ) {
+        val document = if (submission.id.isBlank()) submissions(userId).document() else submissions(userId).document(submission.id)
+        val updated = submission.copy(id = document.id)
+        document.set(
+                mapOf(
+                    "alarmId" to updated.alarmId,
+                    "type" to updated.type,
+                    "text" to updated.text,
+                    "imagePath" to updated.imagePath,
+                    "verdict" to updated.verdict,
+                    "feedback" to updated.feedback,
+                    "alarmHour" to updated.alarmHour,
+                    "alarmMinute" to updated.alarmMinute,
+                    "triggeredAt" to updated.triggeredAt,
+                    "completedAt" to updated.completedAt,
+                    "responseDurationMs" to updated.responseDurationMs,
+                    "wakeStatus" to updated.wakeStatus,
+                    "createdAt" to updated.createdAt
+                )
+            )
+            .addOnSuccessListener { onSuccess(updated) }
+            .addOnFailureListener(onFailure)
+    }
+
+    fun updateSubmissionWakeStatus(
+        userId: String,
+        submissionId: String,
+        wakeStatus: String,
         onSuccess: () -> Unit,
         onFailure: (Exception) -> Unit
     ) {
         submissions(userId)
-            .document()
-            .set(
-                mapOf(
-                    "alarmId" to submission.alarmId,
-                    "type" to submission.type,
-                    "text" to submission.text,
-                    "imagePath" to submission.imagePath,
-                    "verdict" to submission.verdict,
-                    "feedback" to submission.feedback,
-                    "alarmHour" to submission.alarmHour,
-                    "alarmMinute" to submission.alarmMinute,
-                    "triggeredAt" to submission.triggeredAt,
-                    "completedAt" to submission.completedAt,
-                    "responseDurationMs" to submission.responseDurationMs,
-                    "createdAt" to submission.createdAt
-                )
-            )
+            .document(submissionId)
+            .update("wakeStatus", wakeStatus)
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener(onFailure)
     }
@@ -114,6 +129,7 @@ object AlarmRepository {
                 onSuccess(
                     snapshot.documents.map { doc ->
                         WakeSubmission(
+                            id = doc.id,
                             alarmId = doc.getString("alarmId").orEmpty(),
                             type = doc.getString("type").orEmpty(),
                             text = doc.getString("text").orEmpty(),
@@ -125,6 +141,7 @@ object AlarmRepository {
                             triggeredAt = doc.getLong("triggeredAt") ?: 0L,
                             completedAt = doc.getLong("completedAt") ?: 0L,
                             responseDurationMs = doc.getLong("responseDurationMs") ?: 0L,
+                            wakeStatus = doc.getString("wakeStatus") ?: "pending",
                             createdAt = doc.getLong("createdAt") ?: 0L
                         )
                     }.sortedByDescending { it.createdAt }
