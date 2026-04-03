@@ -13,17 +13,34 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.GravityCompat
 import androidx.core.content.ContextCompat
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
+import androidx.drawerlayout.widget.DrawerLayout
 import com.example.fixd.databinding.ActivityDashboardBinding
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.bottomnavigation.BottomNavigationMenuView
 import com.google.android.material.navigation.NavigationView
 import com.google.firebase.auth.FirebaseAuth
 
 class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener, ProfileFragment.Host, HomeFragment.Host {
+    private enum class FloatingDestination {
+        HOME,
+        TAB_ROOT,
+        TAB_SECONDARY
+    }
+
+    private enum class FloatingMenuAction {
+        GO_HOME,
+        GO_TAB_ROOT,
+        GO_TAB_SECONDARY
+    }
 
     private lateinit var binding: ActivityDashboardBinding
     private lateinit var auth: FirebaseAuth
     private var selectedProblems: List<ProblemArea> = emptyList()
     private var activeDrawerItemId: Int = R.id.menu_home
+    private var isFloatingMenuExpanded = false
+    private var isOnProblemTabPage = false
+    private var currentProblemArea: ProblemArea? = null
+    private var currentFloatingDestination = FloatingDestination.HOME
 
     override fun onCreate(savedInstanceState: Bundle?) {
         UserPreferences.applyTheme(this)
@@ -31,8 +48,21 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
         super.onCreate(savedInstanceState)
         binding = ActivityDashboardBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        AppBackgroundManager.applyToActivity(this)
+        ThemePaletteManager.applyToActivity(this)
         applyTopChromeColors()
+        supportFragmentManager.registerFragmentLifecycleCallbacks(
+            object : androidx.fragment.app.FragmentManager.FragmentLifecycleCallbacks() {
+                override fun onFragmentViewCreated(
+                    fm: androidx.fragment.app.FragmentManager,
+                    f: androidx.fragment.app.Fragment,
+                    v: View,
+                    savedInstanceState: Bundle?
+                ) {
+                    ThemePaletteManager.applyToActivity(this@DashboardActivity)
+                }
+            },
+            true
+        )
 
         auth = FirebaseAuth.getInstance()
         val user = auth.currentUser
@@ -41,20 +71,25 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
             finish()
             return
         }
+        binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
         UserAppearanceRepository.getAppearance(
             userId = user.uid,
             onSuccess = { settings ->
-                AppBackgroundManager.updateSettings(settings)
+                ThemePaletteManager.updateSettings(settings)
                 ThemePaletteManager.syncFromAppearance(this)
-                AppBackgroundManager.applyToActivity(this)
                 applyTopChromeColors()
             },
             onFailure = { }
         )
 
         binding.menuButton.setOnClickListener {
-            binding.drawerLayout.openDrawer(GravityCompat.START)
+            if (isOnProblemTabPage) {
+                toggleFloatingMenu()
+            } else {
+                binding.drawerLayout.openDrawer(GravityCompat.START)
+            }
         }
+        setupFloatingMenu()
         binding.navigationView.setNavigationItemSelectedListener(this)
         binding.bottomNavigationView.setOnItemSelectedListener { item ->
             animateBottomNavIcon(item.itemId)
@@ -127,9 +162,12 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     }
 
     private fun showProblemTab(area: ProblemArea) {
+        currentProblemArea = area
+        currentFloatingDestination = FloatingDestination.TAB_ROOT
         clearDrawerSelection()
         selectBottomNavigationItem(area.menuItemId)
         binding.screenTitle.text = getString(area.titleRes)
+        setProblemTabChrome(enabled = true)
         supportFragmentManager.beginTransaction()
             .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
             .replace(R.id.fragmentContainer, ProblemTabFragment.newInstance(area))
@@ -137,9 +175,12 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     }
 
     private fun showHomePage() {
+        currentProblemArea = null
+        currentFloatingDestination = FloatingDestination.HOME
         setDrawerSelection(R.id.menu_home)
         clearBottomNavSelection()
         binding.screenTitle.text = getString(R.string.home_page_title)
+        setProblemTabChrome(enabled = false)
         supportFragmentManager.beginTransaction()
             .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
             .replace(R.id.fragmentContainer, HomeFragment.newInstance(selectedProblems))
@@ -185,9 +226,12 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     }
 
     private fun showInfoPage(title: String, body: String, cta: String? = null) {
+        currentProblemArea = null
+        currentFloatingDestination = FloatingDestination.HOME
         clearBottomNavSelection()
         clearDrawerSelection()
         binding.screenTitle.text = title
+        setProblemTabChrome(enabled = false)
         supportFragmentManager.beginTransaction()
             .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
             .replace(
@@ -203,9 +247,12 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     }
 
     private fun showProfilePage() {
+        currentProblemArea = null
+        currentFloatingDestination = FloatingDestination.HOME
         setDrawerSelection(R.id.menu_profile)
         clearBottomNavSelection()
         binding.screenTitle.text = getString(R.string.profile_page_title)
+        setProblemTabChrome(enabled = false)
         supportFragmentManager.beginTransaction()
             .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
             .replace(R.id.fragmentContainer, ProfileFragment())
@@ -213,9 +260,12 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     }
 
     private fun showSettingsPage() {
+        currentProblemArea = null
+        currentFloatingDestination = FloatingDestination.HOME
         setDrawerSelection(R.id.menu_settings)
         clearBottomNavSelection()
         binding.screenTitle.text = getString(R.string.settings_page_title)
+        setProblemTabChrome(enabled = false)
         supportFragmentManager.beginTransaction()
             .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
             .replace(R.id.fragmentContainer, SettingsFragment())
@@ -286,9 +336,12 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     }
 
     private fun showPremiumPage() {
+        currentProblemArea = null
+        currentFloatingDestination = FloatingDestination.HOME
         setDrawerSelection(R.id.menu_premium)
         clearBottomNavSelection()
         binding.screenTitle.text = getString(R.string.premium_page_title)
+        setProblemTabChrome(enabled = false)
         supportFragmentManager.beginTransaction()
             .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
             .replace(R.id.fragmentContainer, PremiumFragment())
@@ -302,6 +355,7 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     private fun setDrawerSelection(itemId: Int) {
         activeDrawerItemId = itemId
         binding.navigationView.setCheckedItem(itemId)
+        updateFloatingMenuSelection(itemId)
     }
 
     private fun clearDrawerSelection() {
@@ -309,6 +363,7 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
         repeat(binding.navigationView.menu.size()) { index ->
             binding.navigationView.menu.getItem(index).isChecked = false
         }
+        updateFloatingMenuSelection(0)
     }
 
     private fun applyTopChromeColors() {
@@ -321,4 +376,199 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
         }
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !isDarkMode
     }
+
+    private fun setupFloatingMenu() {
+        binding.dashboardContentRoot.setOnClickListener {
+            if (isOnProblemTabPage && isFloatingMenuExpanded) {
+                setFloatingMenuExpanded(false)
+            }
+        }
+        binding.floatingMenuPanel.setOnClickListener { }
+        binding.floatingMenuHome.setOnClickListener { handleFloatingMenuButtonClick(binding.floatingMenuHome) }
+        binding.floatingMenuProfile.setOnClickListener { handleFloatingMenuButtonClick(binding.floatingMenuProfile) }
+        binding.floatingMenuSettings.setOnClickListener { handleFloatingMenuButtonClick(binding.floatingMenuSettings) }
+        binding.floatingMenuPremium.visibility = View.GONE
+        binding.floatingMenuLogout.visibility = View.GONE
+        configureFloatingMenuForCurrentPage()
+    }
+
+    private fun setProblemTabChrome(enabled: Boolean) {
+        isOnProblemTabPage = enabled
+        configureFloatingMenuForCurrentPage()
+        if (!enabled) {
+            setFloatingMenuExpanded(false)
+            binding.floatingMenuPanel.visibility = View.GONE
+        }
+    }
+
+    private fun toggleFloatingMenu() {
+        if (!isOnProblemTabPage) return
+        setFloatingMenuExpanded(!isFloatingMenuExpanded)
+    }
+
+    private fun setFloatingMenuExpanded(expanded: Boolean) {
+        if (isFloatingMenuExpanded == expanded && (expanded || binding.floatingMenuPanel.visibility != View.VISIBLE)) {
+            if (!expanded) return
+        }
+        isFloatingMenuExpanded = expanded
+        binding.menuButton.animate().rotation(if (expanded) 90f else 0f).setDuration(220).start()
+        if (expanded) {
+            binding.floatingMenuPanel.visibility = View.VISIBLE
+            binding.floatingMenuPanel.alpha = 0f
+            binding.floatingMenuPanel.translationY = -12f
+            binding.floatingMenuPanel.scaleX = 0.94f
+            binding.floatingMenuPanel.scaleY = 0.94f
+            binding.floatingMenuPanel.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(220)
+                .setInterpolator(FastOutSlowInInterpolator())
+                .start()
+        } else {
+            binding.floatingMenuPanel.animate()
+                .alpha(0f)
+                .translationY(-12f)
+                .scaleX(0.94f)
+                .scaleY(0.94f)
+                .setDuration(180)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .withEndAction {
+                    binding.floatingMenuPanel.visibility = View.GONE
+                }
+                .start()
+        }
+    }
+
+    private fun updateFloatingMenuSelection(activeItemId: Int) {
+        val activeBackground = ContextCompat.getColor(this, R.color.brand_primary)
+        val inactiveBackground = ContextCompat.getColor(this, R.color.brand_card)
+        val activeText = ContextCompat.getColor(this, R.color.white)
+        val inactiveText = ContextCompat.getColor(this, R.color.brand_text)
+
+        applyFloatingMenuButtonState(binding.floatingMenuHome, activeItemId == R.id.menu_home, activeBackground, inactiveBackground, activeText, inactiveText)
+        applyFloatingMenuButtonState(binding.floatingMenuProfile, activeItemId == 1, activeBackground, inactiveBackground, activeText, inactiveText)
+        applyFloatingMenuButtonState(binding.floatingMenuSettings, activeItemId == 2, activeBackground, inactiveBackground, activeText, inactiveText)
+    }
+
+    private fun applyFloatingMenuButtonState(
+        button: MaterialButton,
+        isActive: Boolean,
+        activeBackground: Int,
+        inactiveBackground: Int,
+        activeText: Int,
+        inactiveText: Int
+    ) {
+        button.setBackgroundColor(if (isActive) activeBackground else inactiveBackground)
+        button.setTextColor(if (isActive) activeText else inactiveText)
+        button.strokeWidth = if (isActive) 0 else 2.dp
+        button.strokeColor = android.content.res.ColorStateList.valueOf(
+            if (isActive) activeBackground else ContextCompat.getColor(this, R.color.brand_accent)
+        )
+    }
+
+    private fun handleFloatingMenuButtonClick(button: MaterialButton) {
+        val action = button.tag as? FloatingMenuAction ?: return
+        setFloatingMenuExpanded(false)
+        when (action) {
+            FloatingMenuAction.GO_HOME -> showHomePage()
+            FloatingMenuAction.GO_TAB_ROOT -> handleFloatingMenuPrimaryTabAction()
+            FloatingMenuAction.GO_TAB_SECONDARY -> handleFloatingMenuSecondaryTabAction()
+        }
+    }
+
+    private fun bindFloatingMenuButton(button: MaterialButton, label: String, action: FloatingMenuAction) {
+        button.visibility = View.VISIBLE
+        button.text = label
+        button.tag = action
+    }
+
+    private fun configureFloatingMenuForCurrentPage() {
+        if (!isOnProblemTabPage) {
+            binding.floatingMenuPanel.visibility = View.GONE
+            return
+        }
+
+        binding.floatingMenuHome.visibility = View.GONE
+        binding.floatingMenuProfile.visibility = View.GONE
+        binding.floatingMenuSettings.visibility = View.GONE
+        binding.floatingMenuPremium.visibility = View.GONE
+        binding.floatingMenuLogout.visibility = View.GONE
+
+        when (currentProblemArea) {
+            ProblemArea.WAKE_UP -> {
+                bindFloatingMenuButton(
+                    binding.floatingMenuHome,
+                    getString(R.string.drawer_home),
+                    FloatingMenuAction.GO_HOME
+                )
+                if (currentFloatingDestination == FloatingDestination.TAB_ROOT) {
+                    bindFloatingMenuButton(
+                        binding.floatingMenuProfile,
+                        getString(R.string.wake_history_full_title),
+                        FloatingMenuAction.GO_TAB_SECONDARY
+                    )
+                } else {
+                    bindFloatingMenuButton(
+                        binding.floatingMenuProfile,
+                        getString(R.string.problem_wake_up),
+                        FloatingMenuAction.GO_TAB_ROOT
+                    )
+                }
+                updateFloatingMenuSelection(
+                    when (currentFloatingDestination) {
+                        FloatingDestination.HOME -> R.id.menu_home
+                        FloatingDestination.TAB_ROOT -> 1
+                        FloatingDestination.TAB_SECONDARY -> 2
+                    }
+                )
+            }
+            null -> {
+                updateFloatingMenuSelection(R.id.menu_home)
+            }
+            else -> {
+                bindFloatingMenuButton(
+                    binding.floatingMenuHome,
+                    getString(R.string.drawer_home),
+                    FloatingMenuAction.GO_HOME
+                )
+                updateFloatingMenuSelection(
+                    when (currentFloatingDestination) {
+                        FloatingDestination.HOME -> R.id.menu_home
+                        else -> 1
+                    }
+                )
+            }
+        }
+    }
+
+    private fun handleFloatingMenuPrimaryTabAction() {
+        when (currentProblemArea) {
+            null -> showHomePage()
+            else -> showProblemTab(currentProblemArea!!)
+        }
+    }
+
+    private fun handleFloatingMenuSecondaryTabAction() {
+        if (currentProblemArea == ProblemArea.WAKE_UP) {
+            showWakeHistoryPage()
+        }
+    }
+
+    fun showWakeHistoryPage() {
+        currentProblemArea = ProblemArea.WAKE_UP
+        currentFloatingDestination = FloatingDestination.TAB_SECONDARY
+        clearDrawerSelection()
+        selectBottomNavigationItem(ProblemArea.WAKE_UP.menuItemId)
+        binding.screenTitle.text = getString(ProblemArea.WAKE_UP.titleRes)
+        setProblemTabChrome(enabled = true)
+        supportFragmentManager.beginTransaction()
+            .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
+            .replace(R.id.fragmentContainer, WakeHistoryFragment())
+            .commit()
+    }
+
+    private val Int.dp: Int
+        get() = (this * resources.displayMetrics.density).toInt()
 }

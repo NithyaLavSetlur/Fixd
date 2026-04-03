@@ -56,10 +56,11 @@ class WakeUpFragment : Fragment() {
             showAlarmEditor()
         }
         binding.viewFullHistoryButton.setOnClickListener {
-            parentFragmentManager.beginTransaction()
-                .replace(R.id.wakeUpContainer, WakeHistoryFragment())
-                .addToBackStack("wake_history")
-                .commit()
+            (activity as? DashboardActivity)?.showWakeHistoryPage()
+                ?: parentFragmentManager.beginTransaction()
+                    .replace(R.id.wakeUpContainer, WakeHistoryFragment())
+                    .addToBackStack("wake_history")
+                    .commit()
         }
 
         loadWakeData()
@@ -272,7 +273,14 @@ class WakeUpFragment : Fragment() {
                         submission.text
                     }
                     itemBinding.root.setOnClickListener {
-                        WakeSubmissionUi.showDetails(requireContext(), layoutInflater, submission)
+                        WakeSubmissionUi.showDetails(
+                            context = requireContext(),
+                            inflater = layoutInflater,
+                            userId = user.uid,
+                            submission = submission
+                        ) {
+                            loadHistory()
+                        }
                     }
                     binding.historyList.addView(itemView)
                 }

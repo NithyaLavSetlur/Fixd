@@ -4,17 +4,22 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import java.util.Calendar
+import android.net.Uri
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 object AlarmScheduler {
     fun schedule(context: Context, alarm: WakeAlarm) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val triggerAt = nextTriggerMillis(alarm.hour, alarm.minute, alarm.repeatDays)
+        cancel(context, alarm.id)
         val pendingIntent = pendingIntent(context, alarm)
         val showIntent = Intent(context, DashboardActivity::class.java)
         val info = AlarmManager.AlarmClockInfo(triggerAt, PendingIntent.getActivity(
             context,
-            alarm.id.hashCode(),
+            0,
             showIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         ))
@@ -26,17 +31,15 @@ object AlarmScheduler {
         alarmManager.cancel(
             PendingIntent.getBroadcast(
                 context,
-                alarmId.hashCode(),
-                Intent(context, AlarmReceiver::class.java).apply {
-                    putExtra(AlarmReceiver.EXTRA_ALARM_ID, alarmId)
-                },
+                0,
+                alarmIntent(context, alarmId),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
         )
     }
 
     private fun pendingIntent(context: Context, alarm: WakeAlarm): PendingIntent {
-        val intent = Intent(context, AlarmReceiver::class.java).apply {
+        val intent = alarmIntent(context, alarm.id).apply {
             putExtra(AlarmReceiver.EXTRA_ALARM_ID, alarm.id)
             putExtra(AlarmReceiver.EXTRA_ALARM_NAME, alarm.name)
             putExtra(AlarmReceiver.EXTRA_ALARM_HOUR, alarm.hour)
@@ -44,27 +47,54 @@ object AlarmScheduler {
         }
         return PendingIntent.getBroadcast(
             context,
-            alarm.id.hashCode(),
+            0,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
 
+    private fun alarmIntent(context: Context, alarmId: String): Intent {
+        return Intent(context, AlarmReceiver::class.java).apply {
+            action = "com.example.fixd.ALARM_TRIGGER.$alarmId"
+            data = Uri.parse("fixd://alarm/$alarmId")
+        }
+    }
+
     private fun nextTriggerMillis(hour: Int, minute: Int, repeatDays: List<Int>): Long {
-        val now = Calendar.getInstance()
-        val targetDays = if (repeatDays.isEmpty()) listOf(1, 2, 3, 4, 5, 6, 7) else repeatDays
+        val zoneId = ZoneId.systemDefault()
+        val now = LocalDateTime.now(zoneId)
+        val targetDays = if (repeatDays.isEmpty()) {
+            DayOfWeek.entries.toSet()
+        } else {
+            repeatDays.mapNotNull(::toDayOfWeek).toSet()
+        }
+
         for (offset in 0..7) {
-            val candidate = Calendar.getInstance().apply {
-                add(Calendar.DAY_OF_YEAR, offset)
-                set(Calendar.HOUR_OF_DAY, hour)
-                set(Calendar.MINUTE, minute)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-            if (candidate.get(Calendar.DAY_OF_WEEK) in targetDays && candidate.timeInMillis > now.timeInMillis) {
-                return candidate.timeInMillis
+            val candidateDate = LocalDate.now(zoneId).plusDays(offset.toLong())
+            val candidate = candidateDate.atTime(hour, minute)
+            if (candidate.dayOfWeek in targetDays && candidate.isAfter(now)) {
+                return candidate.atZone(zoneId).toInstant().toEpochMilli()
             }
         }
-        return now.timeInMillis + 24 * 60 * 60 * 1000
+
+        return LocalDate.now(zoneId)
+            .plusDays(1)
+            .atTime(hour, minute)
+            .atZone(zoneId)
+            .toInstant()
+            .toEpochMilli()
+    }
+
+    private fun toDayOfWeek(value: Int): DayOfWeek? {
+        return when (value) {
+            1 -> DayOfWeek.SUNDAY
+            2 -> DayOfWeek.MONDAY
+            3 -> DayOfWeek.TUESDAY
+            4 -> DayOfWeek.WEDNESDAY
+            5 -> DayOfWeek.THURSDAY
+            6 -> DayOfWeek.FRIDAY
+            7 -> DayOfWeek.SATURDAY
+            else -> null
+        }
     }
 }

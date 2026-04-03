@@ -11,10 +11,19 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 object WakeValidationApi {
+    data class RecentSubmissionPayload(
+        val type: String,
+        val text: String,
+        val verdict: String,
+        val wakeStatus: String,
+        val createdAt: Long
+    )
+
     fun validate(
         endpoint: String,
         text: String,
         imageBytes: ByteArray?,
+        recentSubmissions: List<RecentSubmissionPayload>,
         onSuccess: (WakeValidationResult) -> Unit,
         onFailure: (Exception) -> Unit
     ) {
@@ -33,6 +42,22 @@ object WakeValidationApi {
                 val payload = JSONObject().apply {
                     put("text", text)
                     put("imageBase64", imageBytes?.let { Base64.encodeToString(it, Base64.NO_WRAP) } ?: "")
+                    put(
+                        "recentSubmissions",
+                        org.json.JSONArray().apply {
+                            recentSubmissions.forEach { submission ->
+                                put(
+                                    JSONObject().apply {
+                                        put("type", submission.type)
+                                        put("text", submission.text)
+                                        put("verdict", submission.verdict)
+                                        put("wakeStatus", submission.wakeStatus)
+                                        put("createdAt", submission.createdAt)
+                                    }
+                                )
+                            }
+                        }
+                    )
                 }
                 connection.outputStream.use { it.write(payload.toString().toByteArray()) }
                 val responseStream = if (connection.responseCode in 200..299) {

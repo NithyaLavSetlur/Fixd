@@ -41,6 +41,7 @@ class WakeHistoryFragment : Fragment() {
         binding.typeFilterSpinner.adapter = buildAdapter(R.array.wake_history_type_filters)
         binding.timeFilterSpinner.adapter = buildAdapter(R.array.wake_history_time_filters)
         binding.durationFilterSpinner.adapter = buildAdapter(R.array.wake_history_duration_filters)
+        binding.statusFilterSpinner.adapter = buildAdapter(R.array.wake_history_status_filters)
 
         val listener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
@@ -53,6 +54,7 @@ class WakeHistoryFragment : Fragment() {
         binding.typeFilterSpinner.onItemSelectedListener = listener
         binding.timeFilterSpinner.onItemSelectedListener = listener
         binding.durationFilterSpinner.onItemSelectedListener = listener
+        binding.statusFilterSpinner.onItemSelectedListener = listener
     }
 
     private fun buildAdapter(arrayRes: Int): ArrayAdapter<String> {
@@ -110,7 +112,17 @@ class WakeHistoryFragment : Fragment() {
                 tileBinding.tileWakeStatus.text = WakeSubmissionUi.wakeStatusLabel(requireContext(), submission)
                 WakeSubmissionUi.bindWakeStatus(tileBinding.tileWakeStatus, submission)
                 tileBinding.root.setOnClickListener {
-                    WakeSubmissionUi.showDetails(requireContext(), layoutInflater, submission)
+                    WakeSubmissionUi.showDetails(
+                        context = requireContext(),
+                        inflater = layoutInflater,
+                        userId = auth.currentUser?.uid.orEmpty(),
+                        submission = submission
+                    ) {
+                        allSubmissions = allSubmissions.map { existing ->
+                            if (existing.id == it.id) it else existing
+                        }
+                        renderHistory()
+                    }
                 }
 
                 val params = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -157,7 +169,14 @@ class WakeHistoryFragment : Fragment() {
             else -> true
         }
 
-        return typeMatches && timeMatches && durationMatches
+        val statusMatches = when (binding.statusFilterSpinner.selectedItemPosition) {
+            1 -> submission.wakeStatus == "awake"
+            2 -> submission.wakeStatus == "asleep"
+            3 -> submission.wakeStatus == "pending"
+            else -> true
+        }
+
+        return typeMatches && timeMatches && durationMatches && statusMatches
     }
 
     private fun dp(value: Int): Int {

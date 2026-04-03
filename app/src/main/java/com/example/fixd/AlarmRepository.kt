@@ -149,4 +149,39 @@ object AlarmRepository {
             }
             .addOnFailureListener(onFailure)
     }
+
+    fun getRecentSubmissions(
+        userId: String,
+        limit: Long = 10,
+        onSuccess: (List<WakeSubmission>) -> Unit,
+        onFailure: (Exception) -> Unit
+    ) {
+        submissions(userId)
+            .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .limit(limit)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                onSuccess(
+                    snapshot.documents.map { doc ->
+                        WakeSubmission(
+                            id = doc.id,
+                            alarmId = doc.getString("alarmId").orEmpty(),
+                            type = doc.getString("type").orEmpty(),
+                            text = doc.getString("text").orEmpty(),
+                            imagePath = doc.getString("imagePath").orEmpty(),
+                            verdict = doc.getString("verdict").orEmpty(),
+                            feedback = doc.getString("feedback").orEmpty(),
+                            alarmHour = (doc.getLong("alarmHour") ?: 0L).toInt(),
+                            alarmMinute = (doc.getLong("alarmMinute") ?: 0L).toInt(),
+                            triggeredAt = doc.getLong("triggeredAt") ?: 0L,
+                            completedAt = doc.getLong("completedAt") ?: 0L,
+                            responseDurationMs = doc.getLong("responseDurationMs") ?: 0L,
+                            wakeStatus = doc.getString("wakeStatus") ?: "pending",
+                            createdAt = doc.getLong("createdAt") ?: 0L
+                        )
+                    }
+                )
+            }
+            .addOnFailureListener(onFailure)
+    }
 }

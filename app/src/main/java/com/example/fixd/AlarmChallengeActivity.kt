@@ -6,6 +6,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.MotionEvent
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -27,7 +30,13 @@ class AlarmChallengeActivity : AppCompatActivity() {
     private var imageBytes: ByteArray? = null
     private var validationPassed = false
     private var isLaunchingCamera = false
+    private var entryUnlocked = false
     private val handler = Handler(Looper.getMainLooper())
+    private val entryTimeoutRunnable = Runnable {
+        if (!validationPassed && !isLaunchingCamera) {
+            lockEntryForInactivity()
+        }
+    }
 
     private val takePictureLauncher =
         registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
@@ -70,16 +79,15 @@ class AlarmChallengeActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityAlarmChallengeBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        AppBackgroundManager.applyToActivity(this)
+        ThemePaletteManager.applyToActivity(this)
 
         auth = FirebaseAuth.getInstance()
         auth.currentUser?.let { user ->
             UserAppearanceRepository.getAppearance(
                 userId = user.uid,
                 onSuccess = { settings ->
-                    AppBackgroundManager.updateSettings(settings)
+                    ThemePaletteManager.updateSettings(settings)
                     ThemePaletteManager.syncFromAppearance(this)
-                    AppBackgroundManager.applyToActivity(this)
                 },
                 onFailure = { }
             )
@@ -106,7 +114,18 @@ class AlarmChallengeActivity : AppCompatActivity() {
 
         binding.capturePhotoButton.setOnClickListener { openCameraForNotePhoto() }
         binding.submitButton.setOnClickListener { submitChallenge() }
+        binding.startEntryButton.setOnClickListener { unlockEntryMode() }
+        binding.challengeInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) {
+                if (entryUnlocked) {
+                    resetEntryTimeout()
+                }
+            }
+        })
         binding.alarmNameText.text = intent.getStringExtra(AlarmReceiver.EXTRA_ALARM_NAME).orEmpty()
+        setEntryMode(unlocked = false, showTimeoutMessage = false)
     }
 
     private fun openCameraForNotePhoto() {
@@ -121,6 +140,7 @@ class AlarmChallengeActivity : AppCompatActivity() {
     }
 
     private fun launchCamera() {
+        resetEntryTimeout()
         val photoUri = runCatching {
             val imageDir = File(cacheDir, "images").apply { mkdirs() }
             val imageFile = File(imageDir, "wake-${System.currentTimeMillis()}.jpg")
@@ -150,6 +170,7 @@ class AlarmChallengeActivity : AppCompatActivity() {
     }
 
     private fun submitChallenge() {
+        if (!entryUnlocked) return
         if (binding.progressBar.isVisible) return
 
         val text = binding.challengeInput.text?.toString()?.trim().orEmpty()
@@ -158,7 +179,7 @@ class AlarmChallengeActivity : AppCompatActivity() {
             return
         }
 
-        sendAlarmServiceAction(AlarmRingingService.ACTION_PAUSE)
+        sendAlarmServiceAction(AlarmRingingService.ACTION_LOW_VOLUME)
         binding.progressBar.isVisible = true
         binding.feedbackText.text = ""
         binding.submitButton.isEnabled = false
@@ -189,14 +210,39 @@ class AlarmChallengeActivity : AppCompatActivity() {
             return
         }
 
-        WakeValidationApi.validate(
-            endpoint = endpoint,
-            text = text,
-            imageBytes = imageBytes,
-            onSuccess = { result ->
-                runOnUiThread {
-                    handleValidationResult(userId, text, localPath, result, triggeredAt)
-                }
+        AlarmRepository.getRecentSubmissions(
+            userId = userId,
+            onSuccess = { recentSubmissions ->
+                WakeValidationApi.validate(
+                    endpoint = endpoint,
+                    text = text,
+                    imageBytes = imageBytes,
+                    recentSubmissions = recentSubmissions.map { submission ->
+                        WakeValidationApi.RecentSubmissionPayload(
+                            type = submission.type,
+                            text = submission.text,
+                            verdict = submission.verdict,
+                            wakeStatus = submission.wakeStatus,
+                            createdAt = submission.createdAt
+                        )
+                    },
+                    onSuccess = { result ->
+                        runOnUiThread {
+                            handleValidationResult(userId, text, localPath, result, triggeredAt)
+                        }
+                    },
+                    onFailure = { exception ->
+                        runOnUiThread {
+                            binding.progressBar.isVisible = false
+                            binding.submitButton.isEnabled = true
+                            sendAlarmServiceAction(AlarmRingingService.ACTION_RESUME)
+                            val errorMessage = exception.localizedMessage?.takeIf { it.isNotBlank() }
+                                ?: getString(R.string.alarm_validation_backend_unavailable)
+                            binding.feedbackText.text = errorMessage
+                            toast(errorMessage)
+                        }
+                    }
+                )
             },
             onFailure = { exception ->
                 runOnUiThread {
@@ -255,11 +301,13 @@ class AlarmChallengeActivity : AppCompatActivity() {
         binding.feedbackText.text = result.feedback
         if (result.passed) {
             validationPassed = true
+            handler.removeCallbacks(entryTimeoutRunnable)
             sendAlarmServiceAction(AlarmRingingService.ACTION_STOP)
             rescheduleAlarm()
             finish()
         } else {
             sendAlarmServiceAction(AlarmRingingService.ACTION_RESUME)
+            setEntryMode(unlocked = false, showTimeoutMessage = false)
             binding.challengeInput.text?.clear()
             imageBytes = null
             localImagePath = ""
@@ -284,6 +332,7 @@ class AlarmChallengeActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+        handler.removeCallbacks(entryTimeoutRunnable)
         if (!validationPassed && !isLaunchingCamera) {
             handler.postDelayed({
                 if (!isFinishing && !isDestroyed && !isLaunchingCamera) {
@@ -301,10 +350,65 @@ class AlarmChallengeActivity : AppCompatActivity() {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (entryUnlocked) {
+            resetEntryTimeout()
+        }
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        if (entryUnlocked && ev?.actionMasked == MotionEvent.ACTION_DOWN) {
+            resetEntryTimeout()
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun unlockEntryMode() {
+        setEntryMode(unlocked = true, showTimeoutMessage = false)
+        sendAlarmServiceAction(AlarmRingingService.ACTION_LOW_VOLUME)
+        resetEntryTimeout()
+    }
+
+    private fun lockEntryForInactivity() {
+        setEntryMode(unlocked = false, showTimeoutMessage = true)
+        sendAlarmServiceAction(AlarmRingingService.ACTION_RESUME)
+    }
+
+    private fun setEntryMode(unlocked: Boolean, showTimeoutMessage: Boolean) {
+        entryUnlocked = unlocked
+        binding.entryContent.isVisible = unlocked
+        binding.startEntryOverlay.isVisible = !unlocked
+        binding.capturePhotoButton.isEnabled = unlocked
+        binding.submitButton.isEnabled = unlocked && !binding.progressBar.isVisible
+        binding.challengeInput.isEnabled = unlocked
+        if (!unlocked) {
+            handler.removeCallbacks(entryTimeoutRunnable)
+            binding.progressBar.isVisible = false
+            binding.submitButton.isEnabled = false
+            if (showTimeoutMessage) {
+                binding.feedbackText.text = getString(R.string.alarm_entry_expired)
+            }
+        } else {
+            binding.feedbackText.text = ""
+        }
+    }
+
+    private fun resetEntryTimeout() {
+        handler.removeCallbacks(entryTimeoutRunnable)
+        if (entryUnlocked) {
+            handler.postDelayed(entryTimeoutRunnable, ENTRY_TIMEOUT_MS)
+        }
+    }
+
     private fun sendAlarmServiceAction(action: String) {
         startService(android.content.Intent(this, AlarmRingingService::class.java).apply {
             this.action = action
             putExtra(AlarmReceiver.EXTRA_ALARM_ID, intent.getStringExtra(AlarmReceiver.EXTRA_ALARM_ID).orEmpty())
         })
+    }
+
+    companion object {
+        private const val ENTRY_TIMEOUT_MS = 3L * 60L * 1000L
     }
 }

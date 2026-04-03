@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 
 class AlarmRingingService : Service() {
     private var player: MediaPlayer? = null
+    private var currentVolume = HIGH_VOLUME
 
     override fun onCreate() {
         super.onCreate()
@@ -29,12 +30,19 @@ class AlarmRingingService : Service() {
         when (action) {
             ACTION_STOP -> stopSelf()
             ACTION_PAUSE -> pauseAlarmSound()
+            ACTION_LOW_VOLUME -> {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(alarmId, alarmName, alarmHour, alarmMinute, triggeredAt)
+                )
+                startAlarmSound(LOW_VOLUME)
+            }
             ACTION_RESUME, "" -> {
                 startForeground(
                     NOTIFICATION_ID,
                     buildNotification(alarmId, alarmName, alarmHour, alarmMinute, triggeredAt)
                 )
-                startAlarmSound()
+                startAlarmSound(HIGH_VOLUME)
             }
         }
         return START_STICKY
@@ -74,7 +82,7 @@ class AlarmRingingService : Service() {
             .build()
     }
 
-    private fun startAlarmSound() {
+    private fun startAlarmSound(volume: Float) {
         if (player == null) {
             val defaultUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
@@ -90,6 +98,8 @@ class AlarmRingingService : Service() {
                 prepare()
             }
         }
+        currentVolume = volume.coerceIn(0f, 1f)
+        player?.setVolume(currentVolume, currentVolume)
         if (player?.isPlaying != true) player?.start()
     }
 
@@ -113,5 +123,8 @@ class AlarmRingingService : Service() {
         const val ACTION_STOP = "fixd.action.STOP_ALARM"
         const val ACTION_PAUSE = "fixd.action.PAUSE_ALARM"
         const val ACTION_RESUME = "fixd.action.RESUME_ALARM"
+        const val ACTION_LOW_VOLUME = "fixd.action.LOW_VOLUME_ALARM"
+        private const val HIGH_VOLUME = 1f
+        private const val LOW_VOLUME = 0.08f
     }
 }

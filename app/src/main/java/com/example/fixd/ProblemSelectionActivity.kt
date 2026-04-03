@@ -19,7 +19,7 @@ class ProblemSelectionActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityProblemSelectionBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        AppBackgroundManager.applyToActivity(this)
+        ThemePaletteManager.applyToActivity(this)
 
         auth = FirebaseAuth.getInstance()
         val user = auth.currentUser
@@ -31,9 +31,8 @@ class ProblemSelectionActivity : AppCompatActivity() {
         UserAppearanceRepository.getAppearance(
             userId = user.uid,
             onSuccess = { settings ->
-                AppBackgroundManager.updateSettings(settings)
+                ThemePaletteManager.updateSettings(settings)
                 ThemePaletteManager.syncFromAppearance(this)
-                AppBackgroundManager.applyToActivity(this)
             },
             onFailure = { }
         )
