@@ -3,6 +3,7 @@ package com.example.fixd
 import android.app.AlertDialog
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.view.View
 import android.view.LayoutInflater
 import android.widget.TextView
 import androidx.core.content.ContextCompat
@@ -69,7 +70,13 @@ object WakeSubmissionUi {
         }
     }
 
-    fun showDetails(context: Context, inflater: LayoutInflater, submission: WakeSubmission) {
+    fun showDetails(
+        context: Context,
+        inflater: LayoutInflater,
+        userId: String,
+        submission: WakeSubmission,
+        onSubmissionUpdated: (WakeSubmission) -> Unit = {}
+    ) {
         val binding = ViewSubmissionDetailBinding.inflate(inflater)
         binding.detailDate.text = formatDateTime(primaryTimestamp(submission))
         binding.detailMeta.text = context.getString(
@@ -106,11 +113,75 @@ object WakeSubmissionUi {
             }
         }
 
-        AlertDialog.Builder(context)
+        val dialog = AlertDialog.Builder(context)
             .setTitle(R.string.wake_history_detail_title)
             .setView(binding.root)
             .setPositiveButton(android.R.string.ok, null)
             .show()
+
+        bindStatusAction(
+            context = context,
+            button = binding.statusYesButton,
+            dialog = dialog,
+            userId = userId,
+            submission = submission,
+            wakeStatus = "awake",
+            onSubmissionUpdated = onSubmissionUpdated
+        )
+        bindStatusAction(
+            context = context,
+            button = binding.statusPendingButton,
+            dialog = dialog,
+            userId = userId,
+            submission = submission,
+            wakeStatus = "pending",
+            onSubmissionUpdated = onSubmissionUpdated
+        )
+        bindStatusAction(
+            context = context,
+            button = binding.statusNoButton,
+            dialog = dialog,
+            userId = userId,
+            submission = submission,
+            wakeStatus = "asleep",
+            onSubmissionUpdated = onSubmissionUpdated
+        )
+    }
+
+    private fun bindStatusAction(
+        context: Context,
+        button: View,
+        dialog: AlertDialog,
+        userId: String,
+        submission: WakeSubmission,
+        wakeStatus: String,
+        onSubmissionUpdated: (WakeSubmission) -> Unit
+    ) {
+        button.isEnabled = submission.wakeStatus != wakeStatus
+        button.setOnClickListener {
+            AlarmRepository.updateSubmissionWakeStatus(
+                userId = userId,
+                submissionId = submission.id,
+                wakeStatus = wakeStatus,
+                onSuccess = {
+                    val updated = submission.copy(wakeStatus = wakeStatus)
+                    WakeSubmissionCache.upsertSubmission(context, updated)
+                    WakeWidgetUpdater.updateAll(context)
+                    if (wakeStatus != "pending") {
+                        WakeFollowUpScheduler.cancel(context, userId, submission.id)
+                    }
+                    onSubmissionUpdated(updated)
+                    dialog.dismiss()
+                },
+                onFailure = {
+                    android.widget.Toast.makeText(
+                        context,
+                        it.localizedMessage ?: context.getString(R.string.firebase_not_ready),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+            )
+        }
     }
 
     fun primaryTimestamp(submission: WakeSubmission): Long {

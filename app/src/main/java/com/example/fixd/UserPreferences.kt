@@ -1,6 +1,7 @@
 package com.example.fixd
 
 import android.content.Context
+import android.content.res.Configuration
 import androidx.appcompat.app.AppCompatDelegate
 
 object UserPreferences {
@@ -40,5 +41,10 @@ object UserPreferences {
 
     fun applyTheme(context: Context) {
         applyThemeMode(getThemeMode(context))
+    }
+
+    fun isDarkMode(context: Context): Boolean {
+        return (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
     }
 }

@@ -40,6 +40,41 @@
             android:layout_marginTop="10dp"
             android:textStyle="bold" />
 
+        <LinearLayout
+            android:id="@+id/detailStatusActions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/statusYesButton"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/wake_history_status_awake" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/statusPendingButton"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/wake_history_status_pending" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/statusNoButton"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/wake_history_status_asleep" />
+        </LinearLayout>
+
         <TextView
             android:id="@+id/detailAiTitle"
             android:layout_width="match_parent"

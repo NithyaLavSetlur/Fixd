@@ -47,6 +47,7 @@
             app:cardBackgroundColor="@color/brand_card">
 
             <LinearLayout
+                android:id="@+id/entryContent"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
@@ -112,6 +113,32 @@
                     android:layout_marginTop="14dp"
                     android:textColor="?attr/colorSecondary"
                     android:textSize="14sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/startEntryOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="22dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="@string/alarm_start_entry_body"
+                    android:textColor="@color/brand_text"
+                    android:textSize="15sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/startEntryButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:minHeight="72dp"
+                    android:text="@string/alarm_start_entry"
+                    android:textSize="22sp" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
     </LinearLayout>

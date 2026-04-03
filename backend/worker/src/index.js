@@ -28,15 +28,42 @@ async function verifyFirebaseToken(idToken, projectId) {
   return payload;
 }
 
-function buildPrompt({ text, hasImage }) {
+function normalizeRecentSubmissions(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, 10)
+    .map((entry) => ({
+      type: String(entry?.type || "").trim() || "unknown",
+      text: String(entry?.text || "").trim(),
+      verdict: String(entry?.verdict || "").trim() || "unknown",
+      wakeStatus: String(entry?.wakeStatus || "").trim() || "unknown",
+      createdAt: Number(entry?.createdAt || 0)
+    }));
+}
+
+function buildPrompt({ text, hasImage, recentSubmissions }) {
+  const recentSubmissionSummary = recentSubmissions.length
+    ? recentSubmissions
+        .map((submission, index) => {
+          const textSummary = submission.text || "(no stored text)";
+          return `${index + 1}. type=${submission.type}; verdict=${submission.verdict}; wakeStatus=${submission.wakeStatus}; text=${textSummary}`;
+        })
+        .join("\n")
+    : "None.";
+
   return `
 You validate whether a wake-up alarm dismissal response is satisfactory.
 You may receive text, an image, or both.
 Accept only if the submission looks like genuine user effort consistent with waking up and starting the day.
+You also receive the user's 10 most recent submissions. Use that history to detect repetition, near-duplicates, stale boilerplate, and patterns suggesting the user is repeatedly typing the same thing just to dismiss the alarm.
 
 For text:
 - Accept only if the user provides a clear, specific, plausible affirmation, plan, goal, or to-do list.
 - Reject if the text is blank, vague, meaningless, generic, repetitive, obviously unrelated, spammy, or looks copied/generated without personal specifics.
+- Compare the current text against the recent submission history.
+- Reject if the current response is identical or nearly identical to recent submissions, unless the new response still contains clearly new specific details that meaningfully distinguish it.
+- Reject if the user appears to be rotating through the same short template with only tiny wording changes.
+- Reject if the text is extremely vague even if it is not an exact duplicate.
 
 For images:
 - First check whether the image contains readable handwritten or printed text.
@@ -52,6 +79,8 @@ Respond ONLY as minified JSON with keys passed(boolean) and feedback(string).
 
 User text: ${text || "(none)"}
 Image attached: ${hasImage ? "yes" : "no"}
+Recent submissions:
+${recentSubmissionSummary}
 `;
 }
 
@@ -94,13 +123,14 @@ export default {
 
     const text = String(body?.text || "").trim();
     const imageBase64 = String(body?.imageBase64 || "").trim();
+    const recentSubmissions = normalizeRecentSubmissions(body?.recentSubmissions);
 
     if (!text && !imageBase64) {
       return jsonResponse({ passed: false, feedback: "Provide text or an image." }, 400);
     }
 
     const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
-    const parts = [{ text: buildPrompt({ text, hasImage: Boolean(imageBase64) }) }];
+    const parts = [{ text: buildPrompt({ text, hasImage: Boolean(imageBase64), recentSubmissions }) }];
     if (imageBase64) {
       parts.push({
         inlineData: {

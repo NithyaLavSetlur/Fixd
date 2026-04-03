@@ -74,18 +74,6 @@
     <string name="profile_focus_wake_only">Wake must stay selected here for now.</string>
     <string name="profile_save_name">Save name</string>
     <string name="profile_save_focus">Save focus areas</string>
-    <string name="profile_background_title">App background</string>
-    <string name="profile_background_body">Pick a gallery image and tune brightness and blur before using it as the shared background across the app.</string>
-    <string name="profile_background_preview">Background preview</string>
-    <string name="profile_background_empty">No custom background selected yet.</string>
-    <string name="profile_background_choose">Choose background photo</string>
-    <string name="profile_background_apply">Apply background</string>
-    <string name="profile_background_remove">Remove background</string>
-    <string name="profile_background_brightness">Brightness: %1$d%%</string>
-    <string name="profile_background_blur">Blur: %1$d</string>
-    <string name="profile_background_saved">Background updated.</string>
-    <string name="profile_background_removed">Background removed.</string>
-    <string name="profile_background_required">Choose an image first.</string>
     <string name="profile_saved">Profile updated.</string>
     <string name="profile_name_saved">Name updated.</string>
     <string name="profile_name_required">Enter the name you want the app to use.</string>
@@ -103,14 +91,17 @@
     <string name="profile_no_credential_changes">Enter a new email or password to make a change.</string>
     <string name="profile_reauth_failed">Reauthentication failed. Sign in again and retry.</string>
     <string name="settings_page_title">Settings</string>
-    <string name="settings_page_body">Manage the theme mode and app background here. If you add a background, Fixd will match the app colours to it automatically.</string>
+    <string name="settings_page_body">Manage the theme mode and generate an app-wide palette from any color you pick here.</string>
     <string name="settings_page_cta">Settings tools coming soon</string>
     <string name="settings_theme_title">Appearance</string>
     <string name="settings_theme_body">Choose whether Fixd follows the system theme, stays light, or stays dark.</string>
     <string name="settings_theme_system">Use system setting</string>
     <string name="settings_theme_light">Light mode</string>
     <string name="settings_theme_dark">Dark mode</string>
-    <string name="settings_background_body">Upload a background image, preview it here, and Fixd will automatically use a matching colour theme. If there is no background, the default blue theme is used.</string>
+    <string name="settings_palette_title">Color palette</string>
+    <string name="settings_palette_body">Choose any base color from the wheel and Fixd will generate a matching palette for the whole app.</string>
+    <string name="settings_palette_selected">Selected color: %1$s</string>
+    <string name="settings_palette_apply">Apply color palette</string>
     <string name="premium_page_title">Premium</string>
     <string name="premium_page_body">Upgrade to Premium for $2 per month to unlock every focus area, keep up to 5 tabs visible in the tab bar, and remove the free focus-area cap.</string>
     <string name="premium_page_cta">Unlock Premium</string>
@@ -191,8 +182,11 @@
     <string name="wake_duration_minutes_seconds">%1$d min %2$d sec</string>
     <string name="wake_follow_up_title">Wake-up check-in</string>
     <string name="wake_follow_up_body">Did you wake up and start getting ready after the alarm?</string>
+    <string name="wake_follow_up_second_body">You still marked this as not ready. Have you started getting ready now?</string>
     <string name="wake_follow_up_yes">Yes</string>
+    <string name="wake_follow_up_not_yet">Not yet</string>
     <string name="wake_follow_up_no">No</string>
+    <string name="wake_follow_up_second_no">No</string>
     <string name="wake_status_awake_symbol">✓</string>
     <string name="wake_status_asleep_symbol">X</string>
     <string name="widget_wake_streak_label">Current wake streak</string>
@@ -216,6 +210,8 @@
     <string name="alarm_notification_body">Open Fixd and complete your wake-up task.</string>
     <string name="alarm_challenge_title">Start your day properly</string>
     <string name="alarm_challenge_body">Type a goal, affirmation, or to-do list, or take a photo of a handwritten note. The validator checks whether it shows you are genuinely ready to start the day.</string>
+    <string name="alarm_start_entry">Start Entry</string>
+    <string name="alarm_start_entry_body">Tap Start Entry to begin typing or taking a photo. The alarm will quiet down for three minutes while you stay active.</string>
     <string name="alarm_input_hint">Type your plan for the day</string>
     <string name="alarm_capture_photo">Take photo of written note</string>
     <string name="alarm_photo_pending">No photo attached yet.</string>
@@ -225,6 +221,7 @@
     <string name="alarm_submit">Validate and stop alarm</string>
     <string name="alarm_submission_required">Add text or a photo before submitting.</string>
     <string name="alarm_retry_needed">That response was not accepted. Try again with a clearer goal, list, or affirmation.</string>
+    <string name="alarm_entry_expired">Entry timed out after inactivity. Tap Start Entry again.</string>
     <string name="alarm_validation_failed">Validation failed. Check the backend setup and try again.</string>
     <string name="alarm_validation_backend_unavailable">AI validation is unavailable right now. The alarm cannot be dismissed until the validator responds.</string>
     <string name="alarm_exit_blocked">Complete the wake-up challenge before leaving.</string>
@@ -253,5 +250,12 @@
         <item>30-40 seconds</item>
         <item>40-50 seconds</item>
         <item>50+ seconds</item>
+    </string-array>
+
+    <string-array name="wake_history_status_filters">
+        <item>Any wake status</item>
+        <item>Yes</item>
+        <item>No</item>
+        <item>Pending</item>
     </string-array>
 </resources>
