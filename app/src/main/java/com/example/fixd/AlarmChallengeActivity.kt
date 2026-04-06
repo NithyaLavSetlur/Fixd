@@ -75,6 +75,7 @@ class AlarmChallengeActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         UserPreferences.applyTheme(this)
+        ThemePaletteManager.loadCachedSettings(this)
         ThemePaletteManager.applyOverlay(this)
         super.onCreate(savedInstanceState)
         binding = ActivityAlarmChallengeBinding.inflate(layoutInflater)

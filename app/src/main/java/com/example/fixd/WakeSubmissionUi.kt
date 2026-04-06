@@ -44,11 +44,11 @@ object WakeSubmissionUi {
         }
     }
 
-    fun bindWakeStatus(textView: TextView, submission: WakeSubmission) {
-        val palette = ThemePaletteManager.paletteFor(
-            ThemePaletteManager.currentSettings(),
-            UserPreferences.isDarkMode(textView.context)
-        )
+    fun bindWakeStatus(
+        textView: TextView,
+        submission: WakeSubmission,
+        palette: GeneratedPalette = ThemePaletteManager.currentPalette(textView.context)
+    ) {
         when (submission.wakeStatus) {
             "awake" -> {
                 textView.text = textView.context.getString(R.string.wake_status_awake_symbol)
@@ -90,7 +90,7 @@ object WakeSubmissionUi {
             submission.verdict.ifBlank { context.getString(R.string.wake_history_status_pending) }
         )
         binding.detailWakeStatus.text = wakeStatusLabel(context, submission)
-        bindWakeStatus(binding.detailWakeStatus, submission)
+        bindWakeStatus(binding.detailWakeStatus, submission, ThemePaletteManager.currentPalette(context))
         binding.detailAiResponse.text = submission.feedback.ifBlank {
             context.getString(R.string.wake_history_detail_ai_empty)
         }

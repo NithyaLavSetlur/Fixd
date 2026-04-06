@@ -7,6 +7,10 @@ import android.content.Intent
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_LOCKED_BOOT_COMPLETED) return
+        if (!AlarmScheduler.canScheduleExactAlarms(context)) {
+            WakeWidgetUpdater.updateAll(context)
+            return
+        }
         LocalAlarmCache.getAlarms(context)
             .filter { it.enabled }
             .forEach { AlarmScheduler.schedule(context, it) }

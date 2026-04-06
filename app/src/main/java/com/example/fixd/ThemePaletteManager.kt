@@ -9,9 +9,13 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.View
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.ImageButton
@@ -21,6 +25,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.children
+import androidx.core.view.doOnAttach
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
@@ -52,6 +57,7 @@ data class GeneratedPalette(
 
 object ThemePaletteManager {
     const val DEFAULT_SEED_COLOR = 0xFF168AA7.toInt()
+    private const val MIST_SCROLL_REENABLE_DELAY_MS = 180L
 
     private var currentSettings = UserAppearanceSettings()
 
@@ -67,10 +73,23 @@ object ThemePaletteManager {
 
     fun applyOverlay(context: Context) = Unit
 
+    fun loadCachedSettings(context: Context) {
+        updateSettings(
+            UserAppearanceSettings(
+                themeMode = UserPreferences.getThemeMode(context),
+                themeSeedColor = UserPreferences.getThemeSeedColor(context)
+            )
+        )
+    }
+
     fun syncFromAppearance(context: Context) {
         if (context is Activity) {
             applyToActivity(context)
         }
+    }
+
+    fun currentPalette(context: Context): GeneratedPalette {
+        return paletteFor(currentSettings, UserPreferences.isDarkMode(context))
     }
 
     fun paletteFor(settings: UserAppearanceSettings, isDarkMode: Boolean): GeneratedPalette {
@@ -146,14 +165,21 @@ object ThemePaletteManager {
                 orientation = GradientDrawable.Orientation.TOP_BOTTOM
             }
             window.setBackgroundDrawable(background)
-            window.setDimAmount(0.42f)
+            window.setDimAmount(0.52f)
             window.attributes = window.attributes.apply {
                 windowAnimations = R.style.Animation_Fixd_Dialog
             }
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            val horizontalInset = (24 * context.resources.displayMetrics.density).toInt()
+            val maxWidth = (context.resources.displayMetrics.widthPixels - (horizontalInset * 2)).coerceAtLeast(0)
+            window.setLayout(maxWidth, WindowManager.LayoutParams.WRAP_CONTENT)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                window.setBackgroundBlurRadius((22 * context.resources.displayMetrics.density).toInt())
-                window.setDimAmount(0.46f)
+                window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                window.attributes = window.attributes.apply {
+                    blurBehindRadius = (18 * context.resources.displayMetrics.density).toInt()
+                }
+                window.setBackgroundBlurRadius((28 * context.resources.displayMetrics.density).toInt())
+                window.setDimAmount(0.56f)
             }
         }
         applyToView(dialog.window?.decorView, palette)
@@ -166,12 +192,18 @@ object ThemePaletteManager {
         if (view == null) return
 
         when (view) {
+            is MistBorderView -> {
+                view.applyPalette(palette)
+            }
             is MaterialCardView -> {
                 view.setCardBackgroundColor(palette.card)
                 view.strokeColor = Color.TRANSPARENT
             }
             is MaterialButton -> {
                 applyButtonColors(view, palette)
+            }
+            is Button -> {
+                applyPlainButtonColors(view, palette)
             }
             is BottomNavigationView -> {
                 view.setBackgroundColor(palette.card)
@@ -212,6 +244,9 @@ object ThemePaletteManager {
             is ProgressBar -> {
                 view.indeterminateTintList = ColorStateList.valueOf(palette.primary)
                 view.progressTintList = ColorStateList.valueOf(palette.primary)
+            }
+            is ScrollView -> {
+                bindMistAwareScroll(view)
             }
             is CompoundButton -> {
                 applyCompoundButtonColors(view, palette)
@@ -266,13 +301,13 @@ object ThemePaletteManager {
         }
 
         if (view is ViewGroup) {
-            if (view.background == null || view.background is ColorDrawable) {
+            if (view.background == null || view.background is ColorDrawable || view.background is GradientDrawable) {
                 if (view !is MaterialCardView &&
                     view !is NavigationView &&
                     view !is BottomNavigationView &&
                     !hasAncestorOfType<MaterialCardView>(view)
                 ) {
-                    view.setBackgroundColor(palette.surface)
+                    applyContainerBackground(view, palette)
                 }
             }
             view.children.forEach { child ->
@@ -289,6 +324,22 @@ object ThemePaletteManager {
                 ColorUtils.blendARGB(palette.gradientMid, palette.surface, 0.7f)
             )
         )
+    }
+
+    private fun applyContainerBackground(view: View, palette: GeneratedPalette) {
+        when (val background = view.background) {
+            is GradientDrawable -> {
+                val updated = ((background.constantState?.newDrawable()?.mutate()) as? GradientDrawable)
+                    ?: (background.mutate() as GradientDrawable)
+                updated.setColor(
+                    if (view is ScrollView) palette.card else palette.surface
+                )
+                view.background = updated
+            }
+            else -> {
+                view.setBackgroundColor(if (view is ScrollView) palette.card else palette.surface)
+            }
+        }
     }
 
     private fun applyButtonColors(button: MaterialButton, palette: GeneratedPalette) {
@@ -412,6 +463,7 @@ object ThemePaletteManager {
 
     private fun applyTextColor(textView: TextView, palette: GeneratedPalette) {
         val current = textView.currentTextColor
+        val background = findNearestSolidBackground(textView)
         textView.setTextColor(
             when {
                 looksLikeColor(current, Color.WHITE) -> chooseTextForContext(textView, palette, preferLight = true)
@@ -419,9 +471,11 @@ object ThemePaletteManager {
                 looksLikeAny(current, listOf(0xFF1E8A66.toInt(), 0xFF7AD9B2.toInt())) -> palette.success
                 looksLikeAny(current, listOf(0xFF2F8FCE.toInt(), 0xFF6CB7F0.toInt())) -> palette.secondary
                 looksLikeAny(current, listOf(0xFFD14343.toInt(), 0xFFB03A3A.toInt(), 0xFFFF8B8B.toInt())) -> palette.danger
+                textView.textSize >= 20f -> readableAccentOn(background, palette)
                 else -> chooseTextForContext(textView, palette, preferLight = false)
             }
         )
+        textView.setLinkTextColor(readableAccentOn(background, palette))
     }
 
     private fun chooseTextForContext(textView: TextView, palette: GeneratedPalette, preferLight: Boolean): Int {
@@ -460,6 +514,22 @@ object ThemePaletteManager {
         return candidates.maxByOrNull { ColorUtils.calculateContrast(it, opaqueBackground) } ?: fallback
     }
 
+    private fun readableAccentOn(background: Int?, palette: GeneratedPalette): Int {
+        val resolvedBackground = background ?: palette.surface
+        val accentCandidates = listOf(
+            palette.primary,
+            palette.secondary,
+            palette.accent,
+            palette.text,
+            palette.onSurface,
+            palette.onCard
+        ).distinct()
+        return accentCandidates
+            .filter { ColorUtils.calculateContrast(it, resolvedBackground) >= 4.5 }
+            .maxByOrNull { ColorUtils.calculateContrast(it, resolvedBackground) }
+            ?: readableTextOn(resolvedBackground, palette, palette.text)
+    }
+
     private fun findNearestSolidBackground(view: View): Int? {
         var current: View? = view
         while (current != null) {
@@ -494,16 +564,90 @@ object ThemePaletteManager {
     }
 
     private fun applyDialogButton(button: TextView, palette: GeneratedPalette, filled: Boolean) {
-        val dialogSurface = palette.card
-        val targetColor = if (filled) palette.primary else palette.secondary
-        val readableColor = readableTextOn(dialogSurface, palette, targetColor)
-        button.setTextColor(
-            if (ColorUtils.calculateContrast(targetColor, dialogSurface) >= 4.5) {
-                targetColor
-            } else {
-                readableColor
-            }
+        val density = button.resources.displayMetrics.density
+        val background = if (filled) {
+            palette.primary
+        } else {
+            ColorUtils.blendARGB(palette.card, palette.surface, 0.28f)
+        }
+        val textColor = readableTextOn(
+            background = background,
+            palette = palette,
+            fallback = if (filled) palette.onPrimary else palette.text
         )
+        val strokeColor = if (filled) {
+            palette.primaryDark
+        } else {
+            ColorUtils.setAlphaComponent(readableAccentOn(background, palette), 92)
+        }
+        button.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 18f * density
+            setColor(background)
+            setStroke((1.5f * density).toInt().coerceAtLeast(1), strokeColor)
+        }
+        button.setTextColor(textColor)
+        button.compoundDrawableTintList = ColorStateList.valueOf(textColor)
+        button.minHeight = (40f * density).toInt()
+        val horizontalPadding = (18f * density).toInt()
+        val verticalPadding = (10f * density).toInt()
+        button.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding)
+    }
+
+    private fun applyPlainButtonColors(button: Button, palette: GeneratedPalette) {
+        val background = findNearestSolidBackground(button) ?: palette.surface
+        val buttonBackground = if (ColorUtils.calculateContrast(palette.primary, background) >= 2.2) {
+            palette.primary
+        } else {
+            readableAccentOn(background, palette)
+        }
+        val textColor = readableTextOn(buttonBackground, palette, palette.onPrimary)
+        button.backgroundTintList = ColorStateList.valueOf(buttonBackground)
+        button.setTextColor(textColor)
+    }
+
+    private fun bindMistAwareScroll(scrollView: ScrollView) {
+        if (scrollView.getTag(R.id.tag_mist_scroll_bound) == true) return
+        scrollView.setTag(R.id.tag_mist_scroll_bound, true)
+        val handler = Handler(Looper.getMainLooper())
+        val reenable = Runnable { setNearestMistEnabled(scrollView, true) }
+
+        scrollView.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                    handler.removeCallbacks(reenable)
+                    setNearestMistEnabled(scrollView, false)
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    handler.removeCallbacks(reenable)
+                    handler.postDelayed(reenable, MIST_SCROLL_REENABLE_DELAY_MS)
+                }
+            }
+            false
+        }
+        scrollView.setOnScrollChangeListener { _, _, _, _, _ ->
+            handler.removeCallbacks(reenable)
+            setNearestMistEnabled(scrollView, false)
+            handler.postDelayed(reenable, MIST_SCROLL_REENABLE_DELAY_MS)
+        }
+        scrollView.doOnAttach {
+            scrollView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: View) = Unit
+                override fun onViewDetachedFromWindow(v: View) {
+                    handler.removeCallbacks(reenable)
+                    v.removeOnAttachStateChangeListener(this)
+                }
+            })
+        }
+    }
+
+    private fun setNearestMistEnabled(view: View, enabled: Boolean) {
+        val root = view.rootView as? ViewGroup ?: return
+        root.children.forEach { child ->
+            if (child is MistBorderView) {
+                child.setAnimationsEnabled(enabled)
+            }
+        }
     }
 
     fun loadSignedInUserAppearance(context: Context, onComplete: (() -> Unit)? = null) {
@@ -518,6 +662,7 @@ object ThemePaletteManager {
             onSuccess = { settings ->
                 updateSettings(settings)
                 UserPreferences.saveThemeMode(context, settings.themeMode)
+                UserPreferences.saveThemeSeedColor(context, settings.themeSeedColor)
                 UserPreferences.applyThemeMode(settings.themeMode)
                 onComplete?.invoke()
             },

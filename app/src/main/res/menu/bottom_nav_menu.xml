@@ -21,7 +21,11 @@
         android:icon="@drawable/ic_tab_social"
         android:title="@string/problem_social_media_distraction" />
     <item
-        android:id="@+id/tab_placeholder"
-        android:icon="@drawable/ic_tab_placeholder"
-        android:title="@string/problem_placeholder" />
+        android:id="@+id/tab_to_do"
+        android:icon="@drawable/ic_tab_to_do"
+        android:title="@string/problem_to_do" />
+    <item
+        android:id="@+id/tab_breathe"
+        android:icon="@drawable/ic_tab_breathe"
+        android:title="@string/problem_breathe" />
 </menu>

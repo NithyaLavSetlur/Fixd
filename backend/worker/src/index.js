@@ -118,6 +118,32 @@ function detectRepetitiveResponse(text, recentSubmissions) {
 
   const wordCount = currentTokens.length;
   const looksThin = wordCount < 6 || normalizedCurrent.length < 32;
+  const firstPersonCount = currentTokens.filter((token) =>
+    ["i", "im", "i m", "my", "me", "today", "will", "going"].includes(token)
+  ).length;
+  const actionWordCount = currentTokens.filter((token) =>
+    [
+      "practice",
+      "study",
+      "work",
+      "train",
+      "clean",
+      "cook",
+      "write",
+      "read",
+      "build",
+      "review",
+      "finish",
+      "start",
+      "progress",
+      "improve",
+      "learn",
+      "exercise",
+      "prepare",
+      "plan"
+    ].includes(token)
+  ).length;
+  const lacksPersonalIntent = firstPersonCount === 0 || actionWordCount === 0;
 
   if (identicalCount >= 1) {
     return "This response is too similar to one of your recent answers. Write a more detailed response with new specifics about what you are doing right now.";
@@ -127,6 +153,9 @@ function detectRepetitiveResponse(text, recentSubmissions) {
   }
   if (minorVariantCount >= 2 && looksThin) {
     return "This answer still looks like a repeated short template. Give a more detailed, specific response about your plan or what you are doing right now.";
+  }
+  if ((highSimilarityCount >= 1 || minorVariantCount >= 1) && looksThin && lacksPersonalIntent) {
+    return "This response still looks too generic or repetitive. Write a specific plan for today with a real action you intend to take.";
   }
 
   return null;
@@ -149,17 +178,22 @@ Accept only if the submission looks like genuine user effort consistent with wak
 You also receive the user's 10 most recent submissions. Use that history to detect repetition, near-duplicates, stale boilerplate, and patterns suggesting the user is repeatedly typing the same thing just to dismiss the alarm.
 
 For text:
-- Accept only if the user provides a clear, specific, plausible affirmation, plan, goal, or to-do list.
+- Accept only if the user provides a clear, specific, plausible affirmation, plan, goal, or to-do list that shows they are actually thinking about their day.
+- A response can still be simple and pass if it is genuine and concrete. Example: practicing a skill, making progress on a project, revising for a class, cleaning a room, going for a walk, or finishing one real task.
 - Reject if the text is blank, vague, meaningless, generic, repetitive, obviously unrelated, spammy, or looks copied/generated without personal specifics.
+- Reject text that looks written only to turn off the alarm rather than to engage with the day.
+- Reject short boilerplate such as repeating the same generic goal, affirmation, or to-do pattern across multiple alarms without new specifics.
 - Compare the current text against the recent submission history.
 - Reject if the current response is identical or nearly identical to recent submissions, unless the new response still contains clearly new specific details that meaningfully distinguish it.
 - Reject if the user appears to be rotating through the same short template with only tiny wording changes.
 - Reject if the text is extremely vague even if it is not an exact duplicate.
+- Prefer acceptance when the user names a real activity, target, or concrete next step for today, even if the plan is modest.
 
 For images:
 - First check whether the image contains readable handwritten or printed text.
 - If the image shows a note, whiteboard, notebook, or paper, read the text from the image and judge that text using the same standard as typed text.
 - Accept note photos if the visible text is a genuine plan for the day, affirmation, motivation, or to-do list that suggests the user is up and engaging with the day.
+- The note text can be simple if it is clearly personal and concrete, such as planning to practice a skill or make progress on one meaningful task today.
 - Accept only if the image appears to be a genuine camera photo that plausibly shows the user is awake or engaged in a real wake-up task.
 - Examples that can pass: a fresh selfie, the room/desk/bathroom/kitchen in a natural live photo, getting dressed, brushing teeth, breakfast setup, or an authentic handwritten note with a plan/affirmation for today.
 - Reject screenshots, black frames, heavily blurred/obscured images, obvious stock/generated images, memes, random unrelated objects, or note photos whose text is unreadable, empty, generic, or unrelated to starting the day.

@@ -31,15 +31,24 @@ enum class ProblemArea(
         R.string.problem_social_media_distraction_subtitle,
         R.drawable.ic_tab_social
     ),
-    PLACEHOLDER(
-        R.id.tab_placeholder,
-        R.string.problem_placeholder,
-        R.string.problem_placeholder_subtitle,
-        R.drawable.ic_tab_placeholder
+    TO_DO(
+        R.id.tab_to_do,
+        R.string.problem_to_do,
+        R.string.problem_to_do_subtitle,
+        R.drawable.ic_tab_to_do
+    ),
+    BREATHE(
+        R.id.tab_breathe,
+        R.string.problem_breathe,
+        R.string.problem_breathe_subtitle,
+        R.drawable.ic_tab_breathe
     );
 
     companion object {
-        fun fromName(name: String): ProblemArea? = entries.firstOrNull { it.name == name }
+        fun fromName(name: String): ProblemArea? = when (name) {
+            "PLACEHOLDER" -> TO_DO
+            else -> entries.firstOrNull { it.name == name }
+        }
         fun fromMenuItemId(itemId: Int): ProblemArea? = entries.firstOrNull { it.menuItemId == itemId }
     }
 }

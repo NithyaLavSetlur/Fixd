@@ -29,8 +29,11 @@ object NavigationRouter {
 
         UserProfileRepository.getProfile(
             userId = user.uid,
-            onSuccess = { profile ->
-                val next = if (profile?.selectedProblems?.isNotEmpty() == true) {
+            onSuccess = { rawProfile ->
+                val effectiveProfile = PremiumEntitlement.applyEffectiveEntitlement(user, rawProfile)
+                val hasActivatedTabs = rawProfile?.availableProblems?.isNotEmpty() == true ||
+                    rawProfile?.selectedProblems?.isNotEmpty() == true
+                val next = if (hasActivatedTabs || effectiveProfile.isPremium) {
                     dashboardIntent(context)
                 } else {
                     selectionIntent(context)

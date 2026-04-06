@@ -12,6 +12,7 @@ class SplashActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         UserPreferences.applyTheme(this)
+        ThemePaletteManager.loadCachedSettings(this)
         ThemePaletteManager.applyOverlay(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_splash)

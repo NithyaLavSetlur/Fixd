@@ -88,8 +88,7 @@
                     <FrameLayout
                         android:id="@+id/fragmentContainer"
                         android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:animateLayoutChanges="true" />
+                        android:layout_height="match_parent" />
                 </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
 
@@ -98,10 +97,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="@color/brand_card"
+                app:itemIconSize="30dp"
                 app:itemIconTint="@color/bottom_nav_colors"
                 app:itemRippleColor="@color/transparent"
                 app:itemTextColor="@color/bottom_nav_colors"
-                app:labelVisibilityMode="labeled" />
+                app:labelVisibilityMode="unlabeled" />
         </LinearLayout>
 
         <com.google.android.material.card.MaterialCardView
@@ -165,6 +165,14 @@
                     android:text="@string/drawer_logout" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
+
+        <com.example.fixd.MistBorderView
+            android:id="@+id/dashboardMistBorder"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:elevation="16dp"
+            android:clickable="false"
+            android:focusable="false" />
     </FrameLayout>
 
     <com.google.android.material.navigation.NavigationView

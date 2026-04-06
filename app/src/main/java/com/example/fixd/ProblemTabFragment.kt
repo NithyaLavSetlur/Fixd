@@ -23,8 +23,9 @@ class ProblemTabFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        ThemePaletteManager.applyToView(binding.root, ThemePaletteManager.currentPalette(requireContext()))
         val areaName = requireArguments().getString(ARG_AREA_NAME).orEmpty()
-        val area = ProblemArea.fromName(areaName) ?: ProblemArea.PLACEHOLDER
+        val area = ProblemArea.fromName(areaName) ?: ProblemArea.TO_DO
 
         if (area == ProblemArea.WAKE_UP) {
             childFragmentManager.beginTransaction()
@@ -38,6 +39,8 @@ class ProblemTabFragment : Fragment() {
         binding.problemIcon.setImageResource(area.iconRes)
         binding.sectionTitle.setText(area.titleRes)
         binding.sectionSubtitle.setText(area.subtitleRes)
+        binding.placeholderBody.text = getString(R.string.problem_placeholder_body, getString(area.titleRes))
+        binding.placeholderButton.setText(R.string.problem_placeholder_button)
         binding.problemContentGroup.visibility = View.VISIBLE
         binding.wakeUpContainer.visibility = View.GONE
     }

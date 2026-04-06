@@ -1,7 +1,7 @@
 package com.example.fixd
 
 import android.content.Intent
-import android.content.res.Configuration
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -11,7 +11,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.GravityCompat
-import androidx.core.content.ContextCompat
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.drawerlayout.widget.DrawerLayout
 import com.example.fixd.databinding.ActivityDashboardBinding
@@ -20,7 +19,7 @@ import com.google.android.material.bottomnavigation.BottomNavigationMenuView
 import com.google.android.material.navigation.NavigationView
 import com.google.firebase.auth.FirebaseAuth
 
-class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener, ProfileFragment.Host, HomeFragment.Host {
+class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener, ProfileFragment.Host, HomeFragment.Host, SettingsFragment.Host {
     private enum class FloatingDestination {
         HOME,
         TAB_ROOT,
@@ -44,25 +43,13 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
 
     override fun onCreate(savedInstanceState: Bundle?) {
         UserPreferences.applyTheme(this)
+        ThemePaletteManager.loadCachedSettings(this)
         ThemePaletteManager.applyOverlay(this)
         super.onCreate(savedInstanceState)
         binding = ActivityDashboardBinding.inflate(layoutInflater)
         setContentView(binding.root)
         ThemePaletteManager.applyToActivity(this)
         applyTopChromeColors()
-        supportFragmentManager.registerFragmentLifecycleCallbacks(
-            object : androidx.fragment.app.FragmentManager.FragmentLifecycleCallbacks() {
-                override fun onFragmentViewCreated(
-                    fm: androidx.fragment.app.FragmentManager,
-                    f: androidx.fragment.app.Fragment,
-                    v: View,
-                    savedInstanceState: Bundle?
-                ) {
-                    ThemePaletteManager.applyToActivity(this@DashboardActivity)
-                }
-            },
-            true
-        )
 
         auth = FirebaseAuth.getInstance()
         val user = auth.currentUser
@@ -72,6 +59,19 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
             return
         }
         binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
+        binding.drawerLayout.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
+            override fun onDrawerSlide(drawerView: View, slideOffset: Float) {
+                binding.dashboardMistBorder.setAnimationsEnabled(slideOffset <= 0f)
+            }
+
+            override fun onDrawerOpened(drawerView: View) {
+                binding.dashboardMistBorder.setAnimationsEnabled(false)
+            }
+
+            override fun onDrawerClosed(drawerView: View) {
+                binding.dashboardMistBorder.setAnimationsEnabled(true)
+            }
+        })
         UserAppearanceRepository.getAppearance(
             userId = user.uid,
             onSuccess = { settings ->
@@ -108,14 +108,12 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
 
     private fun loadProfile(initialLoad: Boolean = false) {
         val user = auth.currentUser ?: return
-        UserProfileRepository.getProfile(
-            userId = user.uid,
+        UserProfileRepository.getEffectiveProfile(
+            user = user,
             onSuccess = getProfileSuccess@{ profile ->
-                val effectiveSelection = profile?.selectedProblems
-                    ?.takeIf { it.isNotEmpty() }
-                    ?: profile?.availableProblems.orEmpty()
-                selectedProblems = effectiveSelection.mapNotNull { ProblemArea.fromName(it) }
-                if (selectedProblems.isEmpty()) {
+                val availableProblems = profile.availableProblems.mapNotNull { ProblemArea.fromName(it) }
+                selectedProblems = profile.selectedProblems.mapNotNull { ProblemArea.fromName(it) }
+                if (availableProblems.isEmpty()) {
                     startActivity(Intent(this, ProblemSelectionActivity::class.java))
                     finish()
                     return@getProfileSuccess
@@ -151,20 +149,45 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
             menu.add(0, area.menuItemId, index, area.titleRes).setIcon(area.iconRes)
         }
         binding.bottomNavigationView.itemBackground = null
-        clearBottomNavSelection()
+        updateBottomNavSelection(null)
     }
 
     private fun clearBottomNavSelection() {
-        repeat(binding.bottomNavigationView.menu.size()) { index ->
-            binding.bottomNavigationView.menu.getItem(index).isChecked = false
+        updateBottomNavSelection(null)
+    }
+
+    private fun updateBottomNavSelection(selectedItemId: Int?) {
+        val menu = binding.bottomNavigationView.menu
+        menu.setGroupCheckable(0, false, true)
+        repeat(menu.size()) { index ->
+            menu.getItem(index).isChecked = false
         }
+        menu.setGroupCheckable(0, true, true)
+
+        if (selectedItemId != null) {
+            menu.findItem(selectedItemId)?.isChecked = true
+        }
+
+        val menuView = binding.bottomNavigationView.getChildAt(0) as? BottomNavigationMenuView ?: run {
+            binding.bottomNavigationView.invalidate()
+            return
+        }
+        repeat(menuView.childCount.coerceAtMost(menu.size())) { index ->
+            val isActive = menu.getItem(index).itemId == selectedItemId
+            menuView.getChildAt(index)?.apply {
+                isSelected = isActive
+                isActivated = isActive
+                refreshDrawableState()
+            }
+        }
+        binding.bottomNavigationView.invalidate()
     }
 
     private fun showProblemTab(area: ProblemArea) {
         currentProblemArea = area
         currentFloatingDestination = FloatingDestination.TAB_ROOT
         clearDrawerSelection()
-        selectBottomNavigationItem(area.menuItemId)
+        updateBottomNavSelection(area.menuItemId)
         binding.screenTitle.text = getString(area.titleRes)
         setProblemTabChrome(enabled = true)
         supportFragmentManager.beginTransaction()
@@ -322,10 +345,7 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     }
 
     private fun selectBottomNavigationItem(itemId: Int) {
-        repeat(binding.bottomNavigationView.menu.size()) { index ->
-            val item = binding.bottomNavigationView.menu.getItem(index)
-            item.isChecked = item.itemId == itemId
-        }
+        updateBottomNavSelection(itemId)
     }
 
     companion object {
@@ -351,6 +371,15 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
         showProblemTab(area)
     }
 
+    override fun openTabDisplayChooser() {
+        showProfilePage()
+    }
+
+    override fun onTabOrderSaved() {
+        loadProfile()
+        showSettingsPage()
+    }
+
     private fun setDrawerSelection(itemId: Int) {
         activeDrawerItemId = itemId
         binding.navigationView.setCheckedItem(itemId)
@@ -366,22 +395,24 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     }
 
     private fun applyTopChromeColors() {
-        val palette = ThemePaletteManager.paletteFor(
-            ThemePaletteManager.currentSettings(),
-            UserPreferences.isDarkMode(this)
-        )
-        val topColor = if (UserPreferences.isDarkMode(this)) palette.card else palette.surface
-        window.statusBarColor = topColor
-        binding.drawerLayout.setBackgroundColor(topColor)
-        binding.drawerLayout.setStatusBarBackgroundColor(topColor)
+        val palette = ThemePaletteManager.currentPalette(this)
+        val isDarkMode = UserPreferences.isDarkMode(this)
+        val chromeColor = if (isDarkMode) palette.surface else palette.card
+        val contentColor = palette.surface
+        window.statusBarColor = chromeColor
+        binding.drawerLayout.setBackgroundColor(chromeColor)
+        binding.drawerLayout.setStatusBarBackgroundColor(chromeColor)
         binding.dashboardContentRoot.setBackgroundColor(palette.surface)
         (binding.menuButton.parent as? View)?.let { header ->
-            header.setBackgroundColor(topColor)
+            header.setBackgroundColor(chromeColor)
         }
-        binding.bottomNavigationView.setBackgroundColor(palette.card)
+        binding.menuButton.backgroundTintList = ColorStateList.valueOf(
+            if (isDarkMode) chromeColor else palette.card
+        )
+        binding.bottomNavigationView.setBackgroundColor(if (isDarkMode) contentColor else palette.card)
         binding.navigationView.setBackgroundColor(palette.card)
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars =
-            androidx.core.graphics.ColorUtils.calculateLuminance(topColor) > 0.5
+            androidx.core.graphics.ColorUtils.calculateLuminance(chromeColor) > 0.5
     }
 
     private fun setupFloatingMenu() {
@@ -449,10 +480,7 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     }
 
     private fun updateFloatingMenuSelection(activeItemId: Int) {
-        val palette = ThemePaletteManager.paletteFor(
-            ThemePaletteManager.currentSettings(),
-            UserPreferences.isDarkMode(this)
-        )
+        val palette = ThemePaletteManager.currentPalette(this)
         val activeBackground = palette.primary
         val inactiveBackground = palette.card
         val activeText = palette.onPrimary
@@ -486,10 +514,7 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
         )
         button.strokeWidth = if (isActive) 0 else 2.dp
         button.strokeColor = android.content.res.ColorStateList.valueOf(
-            if (isActive) activeBackground else ThemePaletteManager.paletteFor(
-                ThemePaletteManager.currentSettings(),
-                UserPreferences.isDarkMode(this)
-            ).accent
+            if (isActive) activeBackground else ThemePaletteManager.currentPalette(this).accent
         )
     }
 
