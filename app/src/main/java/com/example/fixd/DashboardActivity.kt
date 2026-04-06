@@ -150,7 +150,7 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
         selectedProblems.forEachIndexed { index, area ->
             menu.add(0, area.menuItemId, index, area.titleRes).setIcon(area.iconRes)
         }
-        binding.bottomNavigationView.itemBackground = ContextCompat.getDrawable(this, R.drawable.bg_bottom_nav_item)
+        binding.bottomNavigationView.itemBackground = null
         clearBottomNavSelection()
     }
 
@@ -370,11 +370,16 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
             ThemePaletteManager.currentSettings(),
             UserPreferences.isDarkMode(this)
         )
-        val topColor = palette.card
+        val topColor = if (UserPreferences.isDarkMode(this)) palette.card else palette.surface
         window.statusBarColor = topColor
+        binding.drawerLayout.setBackgroundColor(topColor)
+        binding.drawerLayout.setStatusBarBackgroundColor(topColor)
+        binding.dashboardContentRoot.setBackgroundColor(palette.surface)
         (binding.menuButton.parent as? View)?.let { header ->
             header.setBackgroundColor(topColor)
         }
+        binding.bottomNavigationView.setBackgroundColor(palette.card)
+        binding.navigationView.setBackgroundColor(palette.card)
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars =
             androidx.core.graphics.ColorUtils.calculateLuminance(topColor) > 0.5
     }
@@ -466,8 +471,19 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
         activeText: Int,
         inactiveText: Int
     ) {
-        button.setBackgroundColor(if (isActive) activeBackground else inactiveBackground)
-        button.setTextColor(if (isActive) activeText else inactiveText)
+        val background = if (isActive) activeBackground else inactiveBackground
+        button.setBackgroundColor(background)
+        button.setTextColor(
+            if (androidx.core.graphics.ColorUtils.calculateContrast(activeText, background) >= 4.5) {
+                if (isActive) activeText else inactiveText
+            } else if (androidx.core.graphics.ColorUtils.calculateContrast(inactiveText, background) >= 4.5) {
+                inactiveText
+            } else if (androidx.core.graphics.ColorUtils.calculateLuminance(background) > 0.45) {
+                android.graphics.Color.BLACK
+            } else {
+                android.graphics.Color.WHITE
+            }
+        )
         button.strokeWidth = if (isActive) 0 else 2.dp
         button.strokeColor = android.content.res.ColorStateList.valueOf(
             if (isActive) activeBackground else ThemePaletteManager.paletteFor(

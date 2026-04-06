@@ -8,8 +8,10 @@ import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.Drawable
+import android.os.Build
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.ImageButton
@@ -22,6 +24,8 @@ import androidx.core.view.children
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.chip.Chip
+import com.google.android.material.imageview.ShapeableImageView
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.switchmaterial.SwitchMaterial
@@ -82,7 +86,7 @@ object ThemePaletteManager {
         val accent = Color.HSVToColor(floatArrayOf((hue + 28f) % 360f, (saturation * 0.58f).coerceAtLeast(0.18f), 0.96f))
         val gradientMid = ColorUtils.blendARGB(primary, secondary, 0.45f)
 
-        val surfaceBase = if (isDarkMode) 0xFF08161C.toInt() else 0xFFF7F7F5.toInt()
+        val surfaceBase = if (isDarkMode) 0xFF08161C.toInt() else 0xFFFFFFFF.toInt()
         val cardBase = if (isDarkMode) 0xFF12242C.toInt() else 0xFFFFFFFF.toInt()
         val surface = if (isDarkMode) {
             ColorUtils.blendARGB(surfaceBase, primaryDark, 0.16f)
@@ -131,7 +135,27 @@ object ThemePaletteManager {
     fun applyToDialog(dialog: AlertDialog) {
         val context = dialog.context
         val palette = paletteFor(currentSettings, UserPreferences.isDarkMode(context))
-        dialog.window?.setBackgroundDrawable(ColorDrawable(palette.card))
+        dialog.window?.let { window ->
+            val background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 30f * context.resources.displayMetrics.density
+                colors = intArrayOf(
+                    ColorUtils.blendARGB(palette.card, palette.surface, 0.08f),
+                    palette.card
+                )
+                orientation = GradientDrawable.Orientation.TOP_BOTTOM
+            }
+            window.setBackgroundDrawable(background)
+            window.setDimAmount(0.42f)
+            window.attributes = window.attributes.apply {
+                windowAnimations = R.style.Animation_Fixd_Dialog
+            }
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                window.setBackgroundBlurRadius((22 * context.resources.displayMetrics.density).toInt())
+                window.setDimAmount(0.46f)
+            }
+        }
         applyToView(dialog.window?.decorView, palette)
         dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.let { applyDialogButton(it, palette, filled = true) }
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.let { applyDialogButton(it, palette, filled = false) }
@@ -190,8 +214,7 @@ object ThemePaletteManager {
                 view.progressTintList = ColorStateList.valueOf(palette.primary)
             }
             is CompoundButton -> {
-                view.buttonTintList = ColorStateList.valueOf(palette.primary)
-                view.setTextColor(palette.text)
+                applyCompoundButtonColors(view, palette)
             }
             is SwitchMaterial -> {
                 val states = arrayOf(
@@ -210,15 +233,31 @@ object ThemePaletteManager {
                     )
                 )
             }
+            is Chip -> {
+                applyChipColors(view, palette)
+            }
             is ImageButton -> {
                 if (view.background is GradientDrawable || view.background is ColorDrawable) {
                     view.backgroundTintList = ColorStateList.valueOf(palette.card)
                 }
                 view.imageTintList = ColorStateList.valueOf(palette.text)
             }
+            is ShapeableImageView -> {
+                if (view.background is ColorDrawable) {
+                    view.backgroundTintList = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.primary, 26))
+                }
+                if (view.drawable == null) {
+                    view.background = gradientBackground(palette)
+                } else if (view.imageTintList != null) {
+                    view.imageTintList = ColorStateList.valueOf(palette.primary)
+                }
+                view.strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.primary, 56))
+            }
             is ImageView -> {
                 if (view.drawable == null) {
                     view.background = gradientBackground(palette)
+                } else {
+                    tintImageViewIfNeeded(view, palette)
                 }
             }
             is TextView -> {
@@ -227,12 +266,11 @@ object ThemePaletteManager {
         }
 
         if (view is ViewGroup) {
-            val parentView = view.parent as? View
             if (view.background == null || view.background is ColorDrawable) {
                 if (view !is MaterialCardView &&
                     view !is NavigationView &&
                     view !is BottomNavigationView &&
-                    parentView !is MaterialCardView
+                    !hasAncestorOfType<MaterialCardView>(view)
                 ) {
                     view.setBackgroundColor(palette.surface)
                 }
@@ -255,18 +293,121 @@ object ThemePaletteManager {
 
     private fun applyButtonColors(button: MaterialButton, palette: GeneratedPalette) {
         val isOutlined = button.strokeWidth > 0
+        val states = arrayOf(
+            intArrayOf(-android.R.attr.state_enabled),
+            intArrayOf()
+        )
         if (isOutlined) {
-            button.backgroundTintList = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.card, 235))
-            button.setTextColor(palette.primary)
-            button.iconTint = ColorStateList.valueOf(palette.primary)
-            button.strokeColor = ColorStateList.valueOf(palette.primary)
+            val enabledBackground = ColorUtils.setAlphaComponent(palette.card, 235)
+            val disabledBackground = ColorUtils.blendARGB(palette.card, palette.surface, 0.55f)
+            val enabledText = readableTextOn(enabledBackground, palette, fallback = palette.primary)
+            val disabledText = ColorUtils.blendARGB(enabledText, disabledBackground, 0.38f)
+            button.backgroundTintList = ColorStateList(
+                states,
+                intArrayOf(disabledBackground, enabledBackground)
+            )
+            button.setTextColor(
+                ColorStateList(
+                    states,
+                    intArrayOf(disabledText, enabledText)
+                )
+            )
+            button.iconTint = ColorStateList(
+                states,
+                intArrayOf(disabledText, enabledText)
+            )
+            button.strokeColor = ColorStateList(
+                states,
+                intArrayOf(
+                    ColorUtils.blendARGB(palette.textMuted, disabledBackground, 0.24f),
+                    palette.primary
+                )
+            )
         } else {
-            button.backgroundTintList = ColorStateList.valueOf(palette.primary)
-            button.setTextColor(palette.onPrimary)
-            button.iconTint = ColorStateList.valueOf(palette.onPrimary)
-            button.strokeColor = ColorStateList.valueOf(palette.primaryDark)
+            val enabledBackground = palette.primary
+            val disabledBackground = ColorUtils.blendARGB(palette.primary, palette.card, 0.72f)
+            val enabledText = readableTextOn(enabledBackground, palette, fallback = palette.onPrimary)
+            val disabledText = readableTextOn(disabledBackground, palette, fallback = palette.textMuted)
+            button.backgroundTintList = ColorStateList(
+                states,
+                intArrayOf(disabledBackground, enabledBackground)
+            )
+            button.setTextColor(
+                ColorStateList(
+                    states,
+                    intArrayOf(disabledText, enabledText)
+                )
+            )
+            button.iconTint = ColorStateList(
+                states,
+                intArrayOf(disabledText, enabledText)
+            )
+            button.strokeColor = ColorStateList(
+                states,
+                intArrayOf(disabledBackground, palette.primaryDark)
+            )
         }
-        button.rippleColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.onPrimary, 26))
+        button.rippleColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(readableTextOn(palette.primary, palette, palette.onPrimary), 26))
+    }
+
+    private fun applyCompoundButtonColors(button: CompoundButton, palette: GeneratedPalette) {
+        val states = arrayOf(
+            intArrayOf(android.R.attr.state_checked),
+            intArrayOf()
+        )
+        val tint = ColorStateList(
+            states,
+            intArrayOf(
+                palette.primary,
+                ColorUtils.blendARGB(palette.card, palette.textMuted, 0.32f)
+            )
+        )
+        button.buttonTintList = tint
+        button.setTextColor(palette.text)
+    }
+
+    private fun applyChipColors(chip: Chip, palette: GeneratedPalette) {
+        val states = arrayOf(
+            intArrayOf(android.R.attr.state_checked),
+            intArrayOf()
+        )
+        chip.chipBackgroundColor = ColorStateList(
+            states,
+            intArrayOf(
+                ColorUtils.setAlphaComponent(palette.primary, 230),
+                ColorUtils.blendARGB(palette.card, palette.surface, 0.35f)
+            )
+        )
+        chip.setTextColor(
+            ColorStateList(
+                states,
+                intArrayOf(palette.onPrimary, palette.text)
+            )
+        )
+        chip.chipStrokeColor = ColorStateList(
+            states,
+            intArrayOf(
+                palette.primaryDark,
+                ColorUtils.setAlphaComponent(palette.primary, 72)
+            )
+        )
+        chip.chipIconTint = ColorStateList(
+            states,
+            intArrayOf(palette.onPrimary, palette.primary)
+        )
+        chip.checkedIconTint = ColorStateList.valueOf(palette.onPrimary)
+        chip.rippleColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.primary, 36))
+    }
+
+    private fun tintImageViewIfNeeded(view: ImageView, palette: GeneratedPalette) {
+        val background = view.background
+        if (background is ColorDrawable) {
+            view.backgroundTintList = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.primary, 22))
+        }
+        val tintList = view.imageTintList
+        if (tintList != null || background is GradientDrawable || background is ColorDrawable) {
+            view.imageTintList = ColorStateList.valueOf(palette.primary)
+        }
     }
 
     private fun applyTextColor(textView: TextView, palette: GeneratedPalette) {
@@ -301,6 +442,24 @@ object ThemePaletteManager {
         return if (preferLight) Color.WHITE else palette.text
     }
 
+    private fun readableTextOn(background: Int, palette: GeneratedPalette, fallback: Int): Int {
+        val opaqueBackground = if (Color.alpha(background) < 255) {
+            ColorUtils.compositeColors(background, palette.surface)
+        } else {
+            background
+        }
+        val candidates = listOf(
+            palette.onPrimary,
+            palette.onCard,
+            palette.onSurface,
+            palette.text,
+            Color.WHITE,
+            Color.BLACK,
+            fallback
+        ).distinct()
+        return candidates.maxByOrNull { ColorUtils.calculateContrast(it, opaqueBackground) } ?: fallback
+    }
+
     private fun findNearestSolidBackground(view: View): Int? {
         var current: View? = view
         while (current != null) {
@@ -312,6 +471,15 @@ object ThemePaletteManager {
             current = current.parent as? View
         }
         return null
+    }
+
+    private inline fun <reified T : View> hasAncestorOfType(view: View): Boolean {
+        var current = view.parent as? View
+        while (current != null) {
+            if (current is T) return true
+            current = current.parent as? View
+        }
+        return false
     }
 
     private fun looksLikeAny(color: Int, candidates: List<Int>): Boolean {
@@ -326,11 +494,16 @@ object ThemePaletteManager {
     }
 
     private fun applyDialogButton(button: TextView, palette: GeneratedPalette, filled: Boolean) {
-        if (filled) {
-            button.setTextColor(palette.primary)
-        } else {
-            button.setTextColor(palette.secondary)
-        }
+        val dialogSurface = palette.card
+        val targetColor = if (filled) palette.primary else palette.secondary
+        val readableColor = readableTextOn(dialogSurface, palette, targetColor)
+        button.setTextColor(
+            if (ColorUtils.calculateContrast(targetColor, dialogSurface) >= 4.5) {
+                targetColor
+            } else {
+                readableColor
+            }
+        )
     }
 
     fun loadSignedInUserAppearance(context: Context, onComplete: (() -> Unit)? = null) {
