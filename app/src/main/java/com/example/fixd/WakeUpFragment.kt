@@ -186,6 +186,7 @@ class WakeUpFragment : Fragment() {
         }
 
         dialog.show()
+        ThemePaletteManager.applyToDialog(dialog)
     }
 
     private fun loadAlarms() {
@@ -231,6 +232,13 @@ class WakeUpFragment : Fragment() {
                     itemBinding.root.setOnClickListener {
                         showAlarmEditor(alarm)
                     }
+                    ThemePaletteManager.applyToView(
+                        itemView,
+                        ThemePaletteManager.paletteFor(
+                            ThemePaletteManager.currentSettings(),
+                            UserPreferences.isDarkMode(requireContext())
+                        )
+                    )
                     binding.alarmList.addView(itemView)
                 }
             },
@@ -282,6 +290,13 @@ class WakeUpFragment : Fragment() {
                             loadHistory()
                         }
                     }
+                    ThemePaletteManager.applyToView(
+                        itemView,
+                        ThemePaletteManager.paletteFor(
+                            ThemePaletteManager.currentSettings(),
+                            UserPreferences.isDarkMode(requireContext())
+                        )
+                    )
                     binding.historyList.addView(itemView)
                 }
             },

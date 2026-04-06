@@ -70,12 +70,20 @@ class ColorWheelView @JvmOverloads constructor(
         val handled = when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
                 updateFromPoint(event.x, event.y)
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                    performClick()
+                }
                 true
             }
             else -> super.onTouchEvent(event)
         }
         if (handled) parent?.requestDisallowInterceptTouchEvent(true)
         return handled
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
     }
 
     private fun updateFromPoint(x: Float, y: Float) {

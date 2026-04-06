@@ -6,7 +6,6 @@ import android.graphics.BitmapFactory
 import android.view.View
 import android.view.LayoutInflater
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 import com.example.fixd.databinding.ViewSubmissionDetailBinding
 import java.io.File
 import java.text.SimpleDateFormat
@@ -46,18 +45,22 @@ object WakeSubmissionUi {
     }
 
     fun bindWakeStatus(textView: TextView, submission: WakeSubmission) {
+        val palette = ThemePaletteManager.paletteFor(
+            ThemePaletteManager.currentSettings(),
+            UserPreferences.isDarkMode(textView.context)
+        )
         when (submission.wakeStatus) {
             "awake" -> {
                 textView.text = textView.context.getString(R.string.wake_status_awake_symbol)
-                textView.setTextColor(ContextCompat.getColor(textView.context, R.color.brand_success))
+                textView.setTextColor(palette.success)
             }
             "asleep" -> {
                 textView.text = textView.context.getString(R.string.wake_status_asleep_symbol)
-                textView.setTextColor(ContextCompat.getColor(textView.context, R.color.wake_status_asleep))
+                textView.setTextColor(palette.danger)
             }
             else -> {
                 textView.text = textView.context.getString(R.string.wake_history_status_pending)
-                textView.setTextColor(ContextCompat.getColor(textView.context, R.color.brand_text_muted))
+                textView.setTextColor(palette.textMuted)
             }
         }
     }
@@ -118,6 +121,7 @@ object WakeSubmissionUi {
             .setView(binding.root)
             .setPositiveButton(android.R.string.ok, null)
             .show()
+        ThemePaletteManager.applyToDialog(dialog)
 
         bindStatusAction(
             context = context,

@@ -74,13 +74,13 @@ class SettingsFragment : Fragment() {
     }
 
     private val themeCheckedListener = RadioGroup.OnCheckedChangeListener { _, checkedId ->
-        val user = auth.currentUser ?: return@OnCheckedChangeListener
         val newMode = when (checkedId) {
             R.id.themeLight -> UserPreferences.THEME_LIGHT
             R.id.themeDark -> UserPreferences.THEME_DARK
             else -> UserPreferences.THEME_SYSTEM
         }
         if (newMode == currentAppearance.themeMode) return@OnCheckedChangeListener
+        val user = auth.currentUser ?: return@OnCheckedChangeListener
 
         UserAppearanceRepository.saveThemeMode(
             userId = user.uid,
