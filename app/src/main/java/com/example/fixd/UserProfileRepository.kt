@@ -53,6 +53,20 @@ object UserProfileRepository {
             .addOnFailureListener(onFailure)
     }
 
+    fun getEffectiveProfile(
+        user: com.google.firebase.auth.FirebaseUser,
+        onSuccess: (UserProfile) -> Unit,
+        onFailure: (Exception) -> Unit
+    ) {
+        getProfile(
+            userId = user.uid,
+            onSuccess = { profile ->
+                onSuccess(PremiumEntitlement.applyEffectiveEntitlement(user, profile))
+            },
+            onFailure = onFailure
+        )
+    }
+
     fun updatePremiumStatus(
         userId: String,
         isPremium: Boolean,

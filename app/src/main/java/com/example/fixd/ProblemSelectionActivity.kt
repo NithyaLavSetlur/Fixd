@@ -12,9 +12,21 @@ class ProblemSelectionActivity : AppCompatActivity() {
     private lateinit var binding: ActivityProblemSelectionBinding
     private lateinit var auth: FirebaseAuth
     private var isPremium = false
+    private val activationCheckboxes by lazy {
+        mapOf(
+            ProblemArea.WAKE_UP to binding.wakeUpCheckbox,
+            ProblemArea.SLEEP_SCHEDULE to binding.sleepScheduleCheckbox,
+            ProblemArea.TIME_MANAGEMENT to binding.timeManagementCheckbox,
+            ProblemArea.TRANSPORT to binding.transportCheckbox,
+            ProblemArea.SOCIAL_MEDIA_DISTRACTION to binding.socialMediaDistractionCheckbox,
+            ProblemArea.TO_DO to binding.placeholderCheckbox,
+            ProblemArea.BREATHE to binding.breatheCheckbox
+        )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         UserPreferences.applyTheme(this)
+        ThemePaletteManager.loadCachedSettings(this)
         ThemePaletteManager.applyOverlay(this)
         super.onCreate(savedInstanceState)
         binding = ActivityProblemSelectionBinding.inflate(layoutInflater)
@@ -37,10 +49,10 @@ class ProblemSelectionActivity : AppCompatActivity() {
             onFailure = { }
         )
 
-        UserProfileRepository.getProfile(
-            userId = user.uid,
+        UserProfileRepository.getEffectiveProfile(
+            user = user,
             onSuccess = { profile ->
-                isPremium = profile?.isPremium == true
+                isPremium = profile.isPremium
                 bindExistingSelection(profile)
                 setupSelectionLimit()
             },
@@ -60,29 +72,52 @@ class ProblemSelectionActivity : AppCompatActivity() {
         val currentSelections = profile?.availableProblems.orEmpty()
             .mapNotNull { ProblemArea.fromName(it) }
             .toSet()
-        binding.wakeUpCheckbox.isChecked = ProblemArea.WAKE_UP in currentSelections || currentSelections.isEmpty()
-        configureWakeOnlySelection()
+        activationCheckboxes.forEach { (area, checkbox) ->
+            checkbox.isChecked = area in currentSelections
+        }
     }
 
     private fun setupSelectionLimit() {
-        binding.wakeUpCheckbox.setOnCheckedChangeListener { buttonView, checked ->
-            if (!checked) {
-                (buttonView as? android.widget.CheckBox)?.isChecked = true
-                Toast.makeText(this, R.string.selection_wake_only, Toast.LENGTH_SHORT).show()
+        activationCheckboxes.values.forEach { checkbox ->
+            checkbox.setOnCheckedChangeListener { buttonView, checked ->
+                if (!checked && selectedAreas().isEmpty()) {
+                    (buttonView as? android.widget.CheckBox)?.isChecked = true
+                    Toast.makeText(this, R.string.selection_choose_at_least_one, Toast.LENGTH_SHORT).show()
+                    return@setOnCheckedChangeListener
+                }
+
+                val maxAllowed = PremiumAccess.maxAvailableProblems(isPremium)
+                if (checked && selectedAreas().size > maxAllowed) {
+                    (buttonView as? android.widget.CheckBox)?.isChecked = false
+                    Toast.makeText(
+                        this,
+                        if (isPremium) R.string.selection_choose_one_to_six else R.string.selection_max_four_available,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
         }
     }
 
     private fun saveSelections(userId: String) {
-        val selectedProblems = listOf(ProblemArea.WAKE_UP)
+        val selectedProblems = selectedAreas()
+        if (!isPremium && selectedProblems.size != PremiumAccess.FREE_AVAILABLE_LIMIT) {
+            toast(getString(R.string.selection_choose_exactly_four))
+            return
+        }
+        if (isPremium && selectedProblems.isEmpty()) {
+            toast(getString(R.string.selection_choose_at_least_one))
+            return
+        }
 
         val currentName = auth.currentUser?.displayName.orEmpty()
-        UserProfileRepository.getProfile(
-            userId = userId,
+        val user = auth.currentUser ?: return
+        UserProfileRepository.getEffectiveProfile(
+            user = user,
             onSuccess = { profile ->
-                val premium = profile?.isPremium == true
-                val availableProblems = listOf(ProblemArea.WAKE_UP.name)
-                val tabBarProblems = listOf(ProblemArea.WAKE_UP.name)
+                val premium = profile.isPremium
+                val availableProblems = ProblemSelectionPolicy.activatedProblemsFromSelections(selectedProblems, premium)
+                val tabBarProblems = ProblemSelectionPolicy.displayedProblemsForActivation(availableProblems, premium)
                 UserProfileRepository.saveProfile(
                     userId = userId,
                     profile = UserProfile(
@@ -90,7 +125,7 @@ class ProblemSelectionActivity : AppCompatActivity() {
                         availableProblems = availableProblems,
                         selectedProblems = tabBarProblems,
                         isPremium = premium,
-                        premiumSince = profile?.premiumSince ?: 0L
+                        premiumSince = profile.premiumSince
                     ),
                     onSuccess = {
                         LocalAlarmCache.saveAlarms(this, emptyList())
@@ -108,20 +143,8 @@ class ProblemSelectionActivity : AppCompatActivity() {
         )
     }
 
-    private fun configureWakeOnlySelection() {
-        listOf(
-            binding.sleepScheduleCheckbox,
-            binding.timeManagementCheckbox,
-            binding.transportCheckbox,
-            binding.socialMediaDistractionCheckbox,
-            binding.placeholderCheckbox
-        ).forEach { checkbox ->
-            checkbox.isChecked = false
-            checkbox.isEnabled = false
-            checkbox.alpha = 0.45f
-        }
-        binding.wakeUpCheckbox.isEnabled = true
-        binding.wakeUpCheckbox.alpha = 1f
+    private fun selectedAreas(): List<ProblemArea> {
+        return activationCheckboxes.filterValues { it.isChecked }.keys.toList()
     }
 
     private fun toast(message: String) {

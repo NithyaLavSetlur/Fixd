@@ -21,6 +21,7 @@ class PremiumFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        ThemePaletteManager.applyToView(binding.root, ThemePaletteManager.currentPalette(requireContext()))
         auth = FirebaseAuth.getInstance()
         binding.purchaseButton.setOnClickListener { }
         binding.restoreButton.setOnClickListener { }
@@ -29,10 +30,10 @@ class PremiumFragment : Fragment() {
 
     private fun loadProfile() {
         val user = auth.currentUser ?: return
-        UserProfileRepository.getProfile(
-            userId = user.uid,
+        UserProfileRepository.getEffectiveProfile(
+            user = user,
             onSuccess = { profile ->
-                currentProfile = profile ?: UserProfile()
+                currentProfile = profile
                 renderProfileState()
             },
             onFailure = {
@@ -49,7 +50,9 @@ class PremiumFragment : Fragment() {
         binding.priceText.text = getString(R.string.premium_placeholder_price)
         binding.purchaseButton.isEnabled = false
         binding.restoreButton.isEnabled = false
-        binding.purchaseButton.text = getString(R.string.premium_placeholder_button)
+        binding.purchaseButton.text = getString(
+            if (currentProfile.isPremium) R.string.premium_already_unlocked else R.string.premium_placeholder_button
+        )
         binding.restoreButton.text = getString(R.string.premium_placeholder_secondary)
         binding.statusText.text = if (currentProfile.isPremium) {
             getString(R.string.premium_active_summary)

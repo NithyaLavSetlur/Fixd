@@ -3,7 +3,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_tab_card"
-    android:fillViewport="true">
+    android:fillViewport="true"
+    android:scrollbars="none">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -142,7 +143,15 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:text="@string/problem_placeholder"
+            android:text="@string/problem_to_do"
+            android:textColor="@color/brand_text" />
+
+        <CheckBox
+            android:id="@+id/breatheCheckbox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/problem_breathe"
             android:textColor="@color/brand_text" />
 
         <com.google.android.material.button.MaterialButton
@@ -169,6 +178,7 @@
                 android:textStyle="bold" />
 
             <TextView
+                android:id="@+id/credentialsBody"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
@@ -176,57 +186,21 @@
                 android:textColor="@color/brand_text_muted"
                 android:textSize="14sp" />
 
-            <com.google.android.material.textfield.TextInputLayout
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/changeEmailButton"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:hint="@string/profile_current_password">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/currentPasswordEditText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textPassword"
-                    android:textColor="@color/brand_text"
-                    android:textColorHint="@color/brand_text_muted" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:hint="@string/profile_new_email">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/newEmailEditText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textEmailAddress"
-                    android:textColor="@color/brand_text"
-                    android:textColorHint="@color/brand_text_muted" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:hint="@string/profile_new_password">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/newPasswordEditText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textPassword"
-                    android:textColor="@color/brand_text"
-                    android:textColorHint="@color/brand_text_muted" />
-            </com.google.android.material.textfield.TextInputLayout>
+                android:text="@string/profile_change_email" />
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/saveCredentialsButton"
+                android:id="@+id/changePasswordButton"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
-                android:text="@string/profile_save_credentials" />
+                android:layout_marginTop="12dp"
+                android:text="@string/profile_change_password" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

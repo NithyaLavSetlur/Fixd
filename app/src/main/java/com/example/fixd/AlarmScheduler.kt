@@ -11,7 +11,13 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 
 object AlarmScheduler {
+    fun canScheduleExactAlarms(context: Context): Boolean {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        return android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
+    }
+
     fun schedule(context: Context, alarm: WakeAlarm) {
+        if (!canScheduleExactAlarms(context)) return
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val triggerAt = nextTriggerMillis(alarm.hour, alarm.minute, alarm.repeatDays)
         cancel(context, alarm.id)

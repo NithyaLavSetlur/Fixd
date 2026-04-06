@@ -24,6 +24,7 @@ class InfoPageFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        ThemePaletteManager.applyToView(binding.root, ThemePaletteManager.currentPalette(requireContext()))
         binding.pageTitle.text = requireArguments().getString(ARG_TITLE)
         binding.pageBody.text = requireArguments().getString(ARG_BODY)
 

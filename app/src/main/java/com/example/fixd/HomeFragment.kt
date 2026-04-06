@@ -12,6 +12,7 @@ class HomeFragment : Fragment() {
 
     interface Host {
         fun openHomeArea(area: ProblemArea)
+        fun openTabDisplayChooser()
     }
 
     private var _binding: FragmentHomeBinding? = null
@@ -32,8 +33,12 @@ class HomeFragment : Fragment() {
             .getStringArrayList(ARG_PROBLEMS)
             .orEmpty()
             .mapNotNull { ProblemArea.fromName(it) }
+        val palette = ThemePaletteManager.currentPalette(requireContext())
+        ThemePaletteManager.applyToView(binding.root, palette)
 
         binding.focusList.removeAllViews()
+        val isEmptyState = selectedProblems.isEmpty()
+        binding.emptyStateGroup.visibility = if (isEmptyState) View.VISIBLE else View.GONE
         selectedProblems.forEach { area ->
             val itemView = layoutInflater.inflate(R.layout.view_focus_card, binding.focusList, false)
             val itemBinding = ViewFocusCardBinding.bind(itemView)
@@ -43,14 +48,11 @@ class HomeFragment : Fragment() {
             itemBinding.root.setOnClickListener {
                 (activity as? Host)?.openHomeArea(area)
             }
-            ThemePaletteManager.applyToView(
-                itemView,
-                ThemePaletteManager.paletteFor(
-                    ThemePaletteManager.currentSettings(),
-                    UserPreferences.isDarkMode(requireContext())
-                )
-            )
+            ThemePaletteManager.applyToView(itemView, palette)
             binding.focusList.addView(itemView)
+        }
+        binding.chooseTabsButton.setOnClickListener {
+            (activity as? Host)?.openTabDisplayChooser()
         }
     }
 

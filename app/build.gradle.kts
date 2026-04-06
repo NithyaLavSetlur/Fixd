@@ -46,6 +46,7 @@ dependencies {
     implementation(libs.androidx.fragment)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.drawerlayout)
+    implementation(libs.androidx.recyclerview)
     implementation(libs.material)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)

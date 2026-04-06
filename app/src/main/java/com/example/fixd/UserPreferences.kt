@@ -7,6 +7,7 @@ import androidx.appcompat.app.AppCompatDelegate
 object UserPreferences {
     private const val PREFS_NAME = "fixd_user_preferences"
     private const val KEY_THEME_MODE = "theme_mode"
+    private const val KEY_THEME_SEED_COLOR = "theme_seed_color"
 
     const val THEME_SYSTEM = "system"
     const val THEME_LIGHT = "light"
@@ -37,6 +38,18 @@ object UserPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString(KEY_THEME_MODE, THEME_SYSTEM)
             ?: THEME_SYSTEM
+    }
+
+    fun saveThemeSeedColor(context: Context, color: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_THEME_SEED_COLOR, color)
+            .apply()
+    }
+
+    fun getThemeSeedColor(context: Context): Int {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_THEME_SEED_COLOR, ThemePaletteManager.DEFAULT_SEED_COLOR)
     }
 
     fun applyTheme(context: Context) {

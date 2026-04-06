@@ -50,5 +50,22 @@
             android:textAlignment="center"
             android:textColor="@color/brand_text_muted"
             android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/placeholderBody"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            android:textAlignment="center"
+            android:textColor="@color/brand_text_muted"
+            android:textSize="15sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/placeholderButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:enabled="false" />
     </LinearLayout>
 </FrameLayout>

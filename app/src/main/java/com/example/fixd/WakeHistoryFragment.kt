@@ -21,6 +21,7 @@ class WakeHistoryFragment : Fragment() {
     private val binding get() = _binding!!
     private lateinit var auth: FirebaseAuth
     private var allSubmissions: List<WakeSubmission> = emptyList()
+    private var spinnerRenderReady = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -39,13 +40,15 @@ class WakeHistoryFragment : Fragment() {
     }
 
     private fun setupFilters() {
-        binding.typeFilterSpinner.adapter = buildAdapter(R.array.wake_history_type_filters)
-        binding.timeFilterSpinner.adapter = buildAdapter(R.array.wake_history_time_filters)
-        binding.durationFilterSpinner.adapter = buildAdapter(R.array.wake_history_duration_filters)
-        binding.statusFilterSpinner.adapter = buildAdapter(R.array.wake_history_status_filters)
+        val palette = ThemePaletteManager.currentPalette(requireContext())
+        binding.typeFilterSpinner.adapter = buildAdapter(R.array.wake_history_type_filters, palette)
+        binding.timeFilterSpinner.adapter = buildAdapter(R.array.wake_history_time_filters, palette)
+        binding.durationFilterSpinner.adapter = buildAdapter(R.array.wake_history_duration_filters, palette)
+        binding.statusFilterSpinner.adapter = buildAdapter(R.array.wake_history_status_filters, palette)
 
         val listener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (!spinnerRenderReady) return
                 renderHistory()
             }
 
@@ -56,13 +59,10 @@ class WakeHistoryFragment : Fragment() {
         binding.timeFilterSpinner.onItemSelectedListener = listener
         binding.durationFilterSpinner.onItemSelectedListener = listener
         binding.statusFilterSpinner.onItemSelectedListener = listener
+        spinnerRenderReady = true
     }
 
-    private fun buildAdapter(arrayRes: Int): ArrayAdapter<String> {
-        val palette = ThemePaletteManager.paletteFor(
-            ThemePaletteManager.currentSettings(),
-            UserPreferences.isDarkMode(requireContext())
-        )
+    private fun buildAdapter(arrayRes: Int, palette: GeneratedPalette): ArrayAdapter<String> {
         return object : ArrayAdapter<String>(
             requireContext(),
             android.R.layout.simple_spinner_item,
@@ -108,6 +108,7 @@ class WakeHistoryFragment : Fragment() {
     }
 
     private fun renderHistory() {
+        val palette = ThemePaletteManager.currentPalette(requireContext())
         val filtered = allSubmissions.filter(::matchesSelectedFilters)
         binding.historyRows.removeAllViews()
         binding.historyCountText.text = resources.getQuantityString(
@@ -136,7 +137,7 @@ class WakeHistoryFragment : Fragment() {
                 )
                 tileBinding.tileType.text = WakeSubmissionUi.typeLabel(requireContext(), submission)
                 tileBinding.tileWakeStatus.text = WakeSubmissionUi.wakeStatusLabel(requireContext(), submission)
-                WakeSubmissionUi.bindWakeStatus(tileBinding.tileWakeStatus, submission)
+                WakeSubmissionUi.bindWakeStatus(tileBinding.tileWakeStatus, submission, palette)
                 tileBinding.root.setOnClickListener {
                     WakeSubmissionUi.showDetails(
                         context = requireContext(),
@@ -155,13 +156,7 @@ class WakeHistoryFragment : Fragment() {
                     marginEnd = if (index == 0 && rowItems.size > 1) dp(6) else 0
                     marginStart = if (index == 1) dp(6) else 0
                 }
-                ThemePaletteManager.applyToView(
-                    tileBinding.root,
-                    ThemePaletteManager.paletteFor(
-                        ThemePaletteManager.currentSettings(),
-                        UserPreferences.isDarkMode(requireContext())
-                    )
-                )
+                ThemePaletteManager.applyToView(tileBinding.root, palette)
                 rowLayout.addView(tileBinding.root, params)
             }
 

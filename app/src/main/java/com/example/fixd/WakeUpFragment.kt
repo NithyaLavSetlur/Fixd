@@ -194,6 +194,7 @@ class WakeUpFragment : Fragment() {
         AlarmRepository.getAlarms(
             userId = user.uid,
             onSuccess = loadSuccess@{ alarms ->
+                val palette = ThemePaletteManager.currentPalette(requireContext())
                 LocalAlarmCache.saveAlarms(requireContext(), alarms)
                 binding.alarmList.removeAllViews()
                 if (alarms.isEmpty()) {
@@ -232,13 +233,7 @@ class WakeUpFragment : Fragment() {
                     itemBinding.root.setOnClickListener {
                         showAlarmEditor(alarm)
                     }
-                    ThemePaletteManager.applyToView(
-                        itemView,
-                        ThemePaletteManager.paletteFor(
-                            ThemePaletteManager.currentSettings(),
-                            UserPreferences.isDarkMode(requireContext())
-                        )
-                    )
+                    ThemePaletteManager.applyToView(itemView, palette)
                     binding.alarmList.addView(itemView)
                 }
             },
@@ -251,6 +246,7 @@ class WakeUpFragment : Fragment() {
         AlarmRepository.getSuccessfulSubmissions(
             userId = user.uid,
             onSuccess = { submissions ->
+                val palette = ThemePaletteManager.currentPalette(requireContext())
                 WakeSubmissionCache.saveSubmissions(requireContext(), submissions)
                 WakeWidgetUpdater.updateAll(requireContext())
                 renderCurrentStreak(submissions)
@@ -272,7 +268,7 @@ class WakeUpFragment : Fragment() {
                         WakeSubmissionUi.formatDate(WakeSubmissionUi.primaryTimestamp(submission))
                     )
                     itemBinding.feedback.text = submission.feedback
-                    WakeSubmissionUi.bindWakeStatus(itemBinding.wakeStatus, submission)
+                    WakeSubmissionUi.bindWakeStatus(itemBinding.wakeStatus, submission, palette)
                     itemBinding.submissionPreview.visibility = View.GONE
                     itemBinding.submissionText.visibility = View.VISIBLE
                     itemBinding.submissionText.text = if (submission.type == "image") {
@@ -290,13 +286,7 @@ class WakeUpFragment : Fragment() {
                             loadHistory()
                         }
                     }
-                    ThemePaletteManager.applyToView(
-                        itemView,
-                        ThemePaletteManager.paletteFor(
-                            ThemePaletteManager.currentSettings(),
-                            UserPreferences.isDarkMode(requireContext())
-                        )
-                    )
+                    ThemePaletteManager.applyToView(itemView, palette)
                     binding.historyList.addView(itemView)
                 }
             },
