@@ -136,10 +136,9 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     }
 
     private fun refreshUserShell(profile: UserProfile?) {
-        val user = auth.currentUser ?: return
         val displayName = profile?.preferredName?.takeIf { it.isNotBlank() }
-            ?: user.displayName?.takeIf { it.isNotBlank() }
-            ?: user.email?.substringBefore("@")
+            ?: auth.currentUser?.displayName?.takeIf { it.isNotBlank() }
+            ?: auth.currentUser?.email?.substringBefore("@")
             ?: getString(R.string.guest_label)
 
         binding.greetingText.text = getString(R.string.dashboard_greeting, displayName)
@@ -367,14 +366,17 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     }
 
     private fun applyTopChromeColors() {
-        val isDarkMode =
-            (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val topColor = ContextCompat.getColor(this, if (isDarkMode) R.color.black else R.color.white)
+        val palette = ThemePaletteManager.paletteFor(
+            ThemePaletteManager.currentSettings(),
+            UserPreferences.isDarkMode(this)
+        )
+        val topColor = palette.card
         window.statusBarColor = topColor
         (binding.menuButton.parent as? View)?.let { header ->
             header.setBackgroundColor(topColor)
         }
-        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !isDarkMode
+        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars =
+            androidx.core.graphics.ColorUtils.calculateLuminance(topColor) > 0.5
     }
 
     private fun setupFloatingMenu() {
@@ -442,10 +444,14 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
     }
 
     private fun updateFloatingMenuSelection(activeItemId: Int) {
-        val activeBackground = ContextCompat.getColor(this, R.color.brand_primary)
-        val inactiveBackground = ContextCompat.getColor(this, R.color.brand_card)
-        val activeText = ContextCompat.getColor(this, R.color.white)
-        val inactiveText = ContextCompat.getColor(this, R.color.brand_text)
+        val palette = ThemePaletteManager.paletteFor(
+            ThemePaletteManager.currentSettings(),
+            UserPreferences.isDarkMode(this)
+        )
+        val activeBackground = palette.primary
+        val inactiveBackground = palette.card
+        val activeText = palette.onPrimary
+        val inactiveText = palette.text
 
         applyFloatingMenuButtonState(binding.floatingMenuHome, activeItemId == R.id.menu_home, activeBackground, inactiveBackground, activeText, inactiveText)
         applyFloatingMenuButtonState(binding.floatingMenuProfile, activeItemId == 1, activeBackground, inactiveBackground, activeText, inactiveText)
@@ -464,7 +470,10 @@ class DashboardActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
         button.setTextColor(if (isActive) activeText else inactiveText)
         button.strokeWidth = if (isActive) 0 else 2.dp
         button.strokeColor = android.content.res.ColorStateList.valueOf(
-            if (isActive) activeBackground else ContextCompat.getColor(this, R.color.brand_accent)
+            if (isActive) activeBackground else ThemePaletteManager.paletteFor(
+                ThemePaletteManager.currentSettings(),
+                UserPreferences.isDarkMode(this)
+            ).accent
         )
     }
 

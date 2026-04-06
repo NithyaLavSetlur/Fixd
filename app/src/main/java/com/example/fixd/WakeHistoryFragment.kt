@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import com.example.fixd.databinding.FragmentWakeHistoryBinding
@@ -58,11 +59,36 @@ class WakeHistoryFragment : Fragment() {
     }
 
     private fun buildAdapter(arrayRes: Int): ArrayAdapter<String> {
-        return ArrayAdapter(
-            requireContext(),
-            android.R.layout.simple_spinner_dropdown_item,
-            resources.getStringArray(arrayRes).toList()
+        val palette = ThemePaletteManager.paletteFor(
+            ThemePaletteManager.currentSettings(),
+            UserPreferences.isDarkMode(requireContext())
         )
+        return object : ArrayAdapter<String>(
+            requireContext(),
+            android.R.layout.simple_spinner_item,
+            resources.getStringArray(arrayRes).toList()
+        ) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                return super.getView(position, convertView, parent).applySpinnerColors(palette, collapsed = true)
+            }
+
+            override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View {
+                return super.getDropDownView(position, convertView, parent).applySpinnerColors(palette, collapsed = false)
+            }
+        }.apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+    }
+
+    private fun View.applySpinnerColors(palette: GeneratedPalette, collapsed: Boolean): View {
+        (this as? TextView)?.let { textView ->
+            textView.setTextColor(palette.text)
+            textView.setBackgroundColor(if (collapsed) palette.card else palette.surface)
+            val horizontal = if (collapsed) dp(12) else dp(16)
+            val vertical = if (collapsed) dp(10) else dp(12)
+            textView.setPadding(horizontal, vertical, horizontal, vertical)
+        }
+        return this
     }
 
     private fun loadHistory() {
@@ -129,6 +155,13 @@ class WakeHistoryFragment : Fragment() {
                     marginEnd = if (index == 0 && rowItems.size > 1) dp(6) else 0
                     marginStart = if (index == 1) dp(6) else 0
                 }
+                ThemePaletteManager.applyToView(
+                    tileBinding.root,
+                    ThemePaletteManager.paletteFor(
+                        ThemePaletteManager.currentSettings(),
+                        UserPreferences.isDarkMode(requireContext())
+                    )
+                )
                 rowLayout.addView(tileBinding.root, params)
             }
 

@@ -8,8 +8,8 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:gravity="center_horizontal"
+        android:layout_height="wrap_content"
+        android:gravity="center"
         android:orientation="vertical"
         android:padding="24dp">
 
@@ -50,6 +50,7 @@
                 android:id="@+id/entryContent"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:gravity="center_horizontal"
                 android:orientation="vertical"
                 android:padding="22dp">
 
@@ -87,6 +88,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
+                    android:gravity="center"
                     android:text="@string/alarm_photo_pending"
                     android:textColor="@color/brand_text_muted"
                     android:textSize="13sp" />
@@ -111,6 +113,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="14dp"
+                    android:gravity="center"
                     android:textColor="?attr/colorSecondary"
                     android:textSize="14sp" />
             </LinearLayout>

@@ -43,6 +43,13 @@ class HomeFragment : Fragment() {
             itemBinding.root.setOnClickListener {
                 (activity as? Host)?.openHomeArea(area)
             }
+            ThemePaletteManager.applyToView(
+                itemView,
+                ThemePaletteManager.paletteFor(
+                    ThemePaletteManager.currentSettings(),
+                    UserPreferences.isDarkMode(requireContext())
+                )
+            )
             binding.focusList.addView(itemView)
         }
     }

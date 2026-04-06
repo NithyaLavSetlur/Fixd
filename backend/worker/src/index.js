@@ -41,6 +41,97 @@ function normalizeRecentSubmissions(value) {
     }));
 }
 
+function normalizeTextForComparison(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenize(text) {
+  return normalizeTextForComparison(text)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1);
+}
+
+function uniqueTokens(tokens) {
+  return [...new Set(tokens)];
+}
+
+function jaccardSimilarity(leftTokens, rightTokens) {
+  if (!leftTokens.length || !rightTokens.length) return 0;
+  const left = new Set(leftTokens);
+  const right = new Set(rightTokens);
+  let intersection = 0;
+  for (const token of left) {
+    if (right.has(token)) intersection += 1;
+  }
+  const union = new Set([...left, ...right]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function isMinorVariant(currentNormalized, previousNormalized) {
+  if (!currentNormalized || !previousNormalized) return false;
+  if (currentNormalized === previousNormalized) return true;
+  if (currentNormalized.includes(previousNormalized) || previousNormalized.includes(currentNormalized)) {
+    return true;
+  }
+  const lengthGap = Math.abs(currentNormalized.length - previousNormalized.length);
+  return lengthGap <= 10;
+}
+
+function detectRepetitiveResponse(text, recentSubmissions) {
+  const normalizedCurrent = normalizeTextForComparison(text);
+  if (!normalizedCurrent) return null;
+
+  const currentTokens = uniqueTokens(tokenize(normalizedCurrent));
+  const textHistory = recentSubmissions
+    .filter((submission) => submission.type === "text" || submission.text)
+    .map((submission) => ({
+      normalized: normalizeTextForComparison(submission.text),
+      tokens: uniqueTokens(tokenize(submission.text))
+    }))
+    .filter((submission) => submission.normalized);
+
+  if (!textHistory.length) return null;
+
+  let identicalCount = 0;
+  let highSimilarityCount = 0;
+  let minorVariantCount = 0;
+
+  for (const previous of textHistory) {
+    if (previous.normalized === normalizedCurrent) {
+      identicalCount += 1;
+      continue;
+    }
+
+    const similarity = jaccardSimilarity(currentTokens, previous.tokens);
+    if (similarity >= 0.82) {
+      highSimilarityCount += 1;
+    }
+    if (similarity >= 0.66 && isMinorVariant(normalizedCurrent, previous.normalized)) {
+      minorVariantCount += 1;
+    }
+  }
+
+  const wordCount = currentTokens.length;
+  const looksThin = wordCount < 6 || normalizedCurrent.length < 32;
+
+  if (identicalCount >= 1) {
+    return "This response is too similar to one of your recent answers. Write a more detailed response with new specifics about what you are doing right now.";
+  }
+  if (highSimilarityCount >= 2) {
+    return "Your recent answers are too repetitive. Write a more in-depth response with concrete new details instead of reusing the same template.";
+  }
+  if (minorVariantCount >= 2 && looksThin) {
+    return "This answer still looks like a repeated short template. Give a more detailed, specific response about your plan or what you are doing right now.";
+  }
+
+  return null;
+}
+
 function buildPrompt({ text, hasImage, recentSubmissions }) {
   const recentSubmissionSummary = recentSubmissions.length
     ? recentSubmissions
@@ -75,6 +166,7 @@ For images:
 
 If both text and image are present, accept if the overall submission is credible.
 Be reasonably strict. Prefer rejecting weak, generic, or suspicious submissions.
+If you reject because of repetition, the feedback should explicitly ask for a more detailed response with new specifics.
 Respond ONLY as minified JSON with keys passed(boolean) and feedback(string).
 
 User text: ${text || "(none)"}
@@ -127,6 +219,11 @@ export default {
 
     if (!text && !imageBase64) {
       return jsonResponse({ passed: false, feedback: "Provide text or an image." }, 400);
+    }
+
+    const repetitiveFeedback = detectRepetitiveResponse(text, recentSubmissions);
+    if (repetitiveFeedback) {
+      return jsonResponse({ passed: false, feedback: repetitiveFeedback }, 200);
     }
 
     const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
