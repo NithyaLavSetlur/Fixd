@@ -116,7 +116,7 @@ object WakeSubmissionUi {
             }
         }
 
-        val dialog = AlertDialog.Builder(context)
+        val dialog = AlertDialog.Builder(context, R.style.ThemeOverlay_Fixd_Dialog)
             .setTitle(R.string.wake_history_detail_title)
             .setView(binding.root)
             .setPositiveButton(android.R.string.ok, null)

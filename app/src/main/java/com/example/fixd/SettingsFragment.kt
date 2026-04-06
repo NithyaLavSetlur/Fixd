@@ -109,7 +109,7 @@ class SettingsFragment : Fragment() {
         )
         tintSwatch(binding.swatchPrimary, palette.primary)
         tintSwatch(binding.swatchSecondary, palette.secondary)
-        tintSwatch(binding.swatchSurface, palette.surface)
+        tintSwatch(binding.swatchSurface, palette.accent)
         tintSwatch(binding.swatchCard, palette.card)
     }
 
@@ -118,6 +118,9 @@ class SettingsFragment : Fragment() {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = 20f * resources.displayMetrics.density
             setColor(color)
+            if (androidx.core.graphics.ColorUtils.calculateLuminance(color) > 0.92) {
+                setStroke((1.5f * resources.displayMetrics.density).toInt(), 0xFFE4E4E0.toInt())
+            }
         }
     }
 

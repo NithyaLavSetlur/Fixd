@@ -24,6 +24,36 @@
         <item name="android:windowBackground">@drawable/bg_splash</item>
     </style>
 
+    <style name="ThemeOverlay.Fixd.Dialog" parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
+        <item name="materialAlertDialogBodyTextStyle">@style/TextAppearance.Fixd.Dialog.Body</item>
+        <item name="materialAlertDialogTitleTextStyle">@style/TextAppearance.Fixd.Dialog.Title</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.Fixd.Dialog</item>
+        <item name="android:windowAnimationStyle">@style/Animation.Fixd.Dialog</item>
+        <item name="backgroundInsetStart">20dp</item>
+        <item name="backgroundInsetEnd">20dp</item>
+        <item name="backgroundInsetTop">28dp</item>
+        <item name="backgroundInsetBottom">28dp</item>
+    </style>
+
+    <style name="ShapeAppearance.Fixd.Dialog" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">30dp</item>
+    </style>
+
+    <style name="TextAppearance.Fixd.Dialog.Title" parent="TextAppearance.MaterialComponents.Headline6">
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.01</item>
+    </style>
+
+    <style name="TextAppearance.Fixd.Dialog.Body" parent="TextAppearance.MaterialComponents.Body1">
+        <item name="android:lineSpacingExtra">2dp</item>
+    </style>
+
+    <style name="Animation.Fixd.Dialog" parent="@android:style/Animation.Dialog">
+        <item name="android:windowEnterAnimation">@anim/fixd_dialog_enter</item>
+        <item name="android:windowExitAnimation">@anim/fixd_dialog_exit</item>
+    </style>
+
     <style name="Theme.Fixd.Alarm" parent="Theme.Fixd">
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowIsTranslucent">false</item>
@@ -81,6 +111,8 @@
     <style name="Widget.Fixd.TileCard" parent="Widget.MaterialComponents.CardView">
         <item name="cardCornerRadius">24dp</item>
         <item name="cardElevation">4dp</item>
+        <item name="cardUseCompatPadding">true</item>
+        <item name="cardPreventCornerOverlap">true</item>
         <item name="strokeWidth">0dp</item>
         <item name="shapeAppearanceOverlay">@style/ShapeAppearance.Fixd.Tile</item>
     </style>

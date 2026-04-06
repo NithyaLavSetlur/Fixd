@@ -119,7 +119,7 @@ class WakeUpFragment : Fragment() {
             picker.show(parentFragmentManager, "wake_time_picker")
         }
 
-        val dialog = AlertDialog.Builder(requireContext())
+        val dialog = AlertDialog.Builder(requireContext(), R.style.ThemeOverlay_Fixd_Dialog)
             .setTitle(if (existingAlarm == null) R.string.wake_editor_title else R.string.wake_editor_edit_title)
             .setView(dialogBinding.root)
             .setPositiveButton(R.string.wake_editor_save, null)
