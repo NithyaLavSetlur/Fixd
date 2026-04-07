@@ -82,8 +82,15 @@ class WakeHistoryFragment : Fragment() {
 
     private fun View.applySpinnerColors(palette: GeneratedPalette, collapsed: Boolean): View {
         (this as? TextView)?.let { textView ->
-            textView.setTextColor(palette.text)
-            textView.setBackgroundColor(if (collapsed) palette.card else palette.surface)
+            val background = if (collapsed) palette.card else palette.surface
+            textView.setBackgroundColor(background)
+            textView.setTextColor(
+                if (collapsed) {
+                    ThemePaletteManager.adaptiveTextColorForView(textView, palette)
+                } else {
+                    ThemePaletteManager.adaptiveTextColorForView(textView, palette)
+                }
+            )
             val horizontal = if (collapsed) dp(12) else dp(16)
             val vertical = if (collapsed) dp(10) else dp(12)
             textView.setPadding(horizontal, vertical, horizontal, vertical)
