@@ -1,29 +1,62 @@
 package com.example.fixd
 
 import android.Manifest
+import android.content.Intent
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.MotionEvent
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.core.view.isVisible
-import com.example.fixd.databinding.ActivityAlarmChallengeBinding
 import com.google.firebase.auth.FirebaseAuth
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 class AlarmChallengeActivity : AppCompatActivity() {
 
-    private lateinit var binding: ActivityAlarmChallengeBinding
     private lateinit var auth: FirebaseAuth
     private var currentPhotoFile: File? = null
     private var localImagePath: String = ""
@@ -31,6 +64,11 @@ class AlarmChallengeActivity : AppCompatActivity() {
     private var validationPassed = false
     private var isLaunchingCamera = false
     private var entryUnlocked = false
+    private var challengeInput by mutableStateOf("")
+    private var photoStatus by mutableStateOf("")
+    private var feedbackText by mutableStateOf("")
+    private var isSubmitting by mutableStateOf(false)
+    private var alarmName by mutableStateOf("")
     private val handler = Handler(Looper.getMainLooper())
     private val entryTimeoutRunnable = Runnable {
         if (!validationPassed && !isLaunchingCamera) {
@@ -46,20 +84,20 @@ class AlarmChallengeActivity : AppCompatActivity() {
                 val compressed = runCatching { WakeValidationApi.compressImage(file.absolutePath) }.getOrNull()
                 if (compressed != null && compressed.isNotEmpty()) {
                     imageBytes = compressed
-                    binding.photoStatus.text = getString(R.string.alarm_photo_ready)
-                    submitChallenge()
+                    photoStatus = getString(R.string.alarm_photo_ready)
+                    resetEntryTimeout()
                 } else {
                     currentPhotoFile = null
                     localImagePath = ""
                     imageBytes = null
-                    binding.photoStatus.text = getString(R.string.alarm_photo_failed)
+                    photoStatus = getString(R.string.alarm_photo_failed)
                     toast(R.string.alarm_photo_failed)
                 }
             } else {
                 currentPhotoFile = null
                 localImagePath = ""
                 imageBytes = null
-                binding.photoStatus.text = getString(R.string.alarm_photo_pending)
+                photoStatus = getString(R.string.alarm_photo_pending)
             }
         }
 
@@ -68,9 +106,14 @@ class AlarmChallengeActivity : AppCompatActivity() {
             if (granted) {
                 launchCamera()
             } else {
-                binding.photoStatus.text = getString(R.string.alarm_camera_permission_required)
+                photoStatus = getString(R.string.alarm_camera_permission_required)
                 toast(R.string.alarm_camera_permission_required)
             }
+        }
+
+    private val pickPhotoLauncher =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            handlePickedImage(uri)
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,11 +121,15 @@ class AlarmChallengeActivity : AppCompatActivity() {
         ThemePaletteManager.loadCachedSettings(this)
         ThemePaletteManager.applyOverlay(this)
         super.onCreate(savedInstanceState)
-        binding = ActivityAlarmChallengeBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        ThemePaletteManager.applyToActivity(this)
-
         auth = FirebaseAuth.getInstance()
+        alarmName = intent.getStringExtra(AlarmReceiver.EXTRA_ALARM_NAME).orEmpty()
+        photoStatus = getString(R.string.alarm_photo_pending)
+        setContent {
+            FixdComposeTheme {
+                AlarmChallengeScreen()
+            }
+        }
+
         auth.currentUser?.let { user ->
             UserAppearanceRepository.getAppearance(
                 userId = user.uid,
@@ -113,20 +160,180 @@ class AlarmChallengeActivity : AppCompatActivity() {
             }
         })
 
-        binding.capturePhotoButton.setOnClickListener { openCameraForNotePhoto() }
-        binding.submitButton.setOnClickListener { submitChallenge() }
-        binding.startEntryButton.setOnClickListener { unlockEntryMode() }
-        binding.challengeInput.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
-            override fun afterTextChanged(s: Editable?) {
-                if (entryUnlocked) {
-                    resetEntryTimeout()
+        setEntryMode(unlocked = false, showTimeoutMessage = false)
+    }
+
+    @Composable
+    private fun AlarmChallengeScreen() {
+        val palette = ThemePaletteManager.currentPalette(this)
+        val gradient = rememberAlarmGradient(
+            start = Color(palette.surface),
+            middle = Color(palette.card),
+            end = Color(palette.primary).copy(alpha = 0.22f)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(gradient)
+        ) {
+            if (!entryUnlocked) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(32.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(24.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(88.dp)
+                                    .aspectRatio(1f)
+                                    .background(
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                        shape = RoundedCornerShape(28.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "!",
+                                    style = MaterialTheme.typography.headlineLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Text(
+                                text = getString(R.string.alarm_challenge_title),
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = alarmName,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = getString(R.string.alarm_start_entry_body),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Button(
+                                onClick = { unlockEntryMode() },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(getString(R.string.alarm_start_entry))
+                            }
+                        }
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = getString(R.string.alarm_challenge_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = alarmName,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = getString(R.string.alarm_challenge_body),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(32.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(20.dp)) {
+                            OutlinedTextField(
+                                value = challengeInput,
+                                onValueChange = {
+                                    challengeInput = it
+                                    if (entryUnlocked) {
+                                        resetEntryTimeout()
+                                    }
+                                },
+                                label = { Text(getString(R.string.alarm_input_hint)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                minLines = 4
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                text = getString(R.string.alarm_photo_section_title),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Button(
+                                    onClick = { openCameraForNotePhoto() },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(getString(R.string.alarm_capture_photo))
+                                }
+                                OutlinedButton(
+                                    onClick = { openGalleryForPhoto() },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(getString(R.string.alarm_choose_photo))
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = photoStatus,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(
+                                onClick = { submitChallenge() },
+                                enabled = !isSubmitting,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(getString(R.string.alarm_submit))
+                            }
+                            if (isSubmitting) {
+                                Spacer(modifier = Modifier.height(14.dp))
+                                CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                            }
+                        }
+                    }
+
+                    if (feedbackText.isNotBlank()) {
+                        Text(
+                            text = feedbackText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (validationPassed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
                 }
             }
-        })
-        binding.alarmNameText.text = intent.getStringExtra(AlarmReceiver.EXTRA_ALARM_NAME).orEmpty()
-        setEntryMode(unlocked = false, showTimeoutMessage = false)
+        }
     }
 
     private fun openCameraForNotePhoto() {
@@ -152,7 +359,7 @@ class AlarmChallengeActivity : AppCompatActivity() {
             currentPhotoFile = null
             localImagePath = ""
             imageBytes = null
-            binding.photoStatus.text = getString(R.string.alarm_photo_failed)
+            photoStatus = getString(R.string.alarm_photo_failed)
             toast(error.localizedMessage ?: getString(R.string.alarm_photo_failed))
             return
         }
@@ -165,31 +372,60 @@ class AlarmChallengeActivity : AppCompatActivity() {
             currentPhotoFile = null
             localImagePath = ""
             imageBytes = null
-            binding.photoStatus.text = getString(R.string.alarm_photo_failed)
+            photoStatus = getString(R.string.alarm_photo_failed)
             toast(error.localizedMessage ?: getString(R.string.alarm_photo_failed))
         }
     }
 
-    private fun submitChallenge() {
-        if (!entryUnlocked) return
-        if (binding.progressBar.isVisible) return
+    private fun openGalleryForPhoto() {
+        resetEntryTimeout()
+        pickPhotoLauncher.launch("image/*")
+    }
 
-        val text = binding.challengeInput.text?.toString()?.trim().orEmpty()
+    private fun handlePickedImage(uri: Uri?) {
+        if (uri == null) {
+            photoStatus = getString(R.string.alarm_photo_pending)
+            return
+        }
+        val compressed = runCatching { compressPickedImage(uri) }.getOrNull()
+        if (compressed != null && compressed.isNotEmpty()) {
+            imageBytes = compressed
+            localImagePath = uri.toString()
+            photoStatus = getString(R.string.alarm_photo_selected)
+        } else {
+            imageBytes = null
+            localImagePath = ""
+            photoStatus = getString(R.string.alarm_photo_failed)
+            toast(R.string.alarm_photo_failed)
+        }
+    }
+
+    private fun compressPickedImage(uri: Uri): ByteArray {
+        val bitmap = contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
+            ?: error(getString(R.string.alarm_photo_failed))
+        return ByteArrayOutputStream().use { output ->
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, output)
+            output.toByteArray()
+        }
+    }
+
+    private fun submitChallenge() {
+        if (!entryUnlocked || isSubmitting) return
+
+        val text = challengeInput.trim()
         if (text.isBlank() && imageBytes == null) {
             toast(R.string.alarm_submission_required)
             return
         }
 
         sendAlarmServiceAction(AlarmRingingService.ACTION_LOW_VOLUME)
-        binding.progressBar.isVisible = true
-        binding.feedbackText.text = ""
-        binding.submitButton.isEnabled = false
+        isSubmitting = true
+        feedbackText = ""
 
         val user = auth.currentUser
         if (user == null) {
             sendAlarmServiceAction(AlarmRingingService.ACTION_RESUME)
-            binding.progressBar.isVisible = false
-            binding.submitButton.isEnabled = true
+            isSubmitting = false
             toast(R.string.firebase_not_ready)
             return
         }
@@ -234,12 +470,11 @@ class AlarmChallengeActivity : AppCompatActivity() {
                     },
                     onFailure = { exception ->
                         runOnUiThread {
-                            binding.progressBar.isVisible = false
-                            binding.submitButton.isEnabled = true
+                            isSubmitting = false
                             sendAlarmServiceAction(AlarmRingingService.ACTION_RESUME)
                             val errorMessage = exception.localizedMessage?.takeIf { it.isNotBlank() }
                                 ?: getString(R.string.alarm_validation_backend_unavailable)
-                            binding.feedbackText.text = errorMessage
+                            feedbackText = errorMessage
                             toast(errorMessage)
                         }
                     }
@@ -247,12 +482,11 @@ class AlarmChallengeActivity : AppCompatActivity() {
             },
             onFailure = { exception ->
                 runOnUiThread {
-                    binding.progressBar.isVisible = false
-                    binding.submitButton.isEnabled = true
+                    isSubmitting = false
                     sendAlarmServiceAction(AlarmRingingService.ACTION_RESUME)
                     val errorMessage = exception.localizedMessage?.takeIf { it.isNotBlank() }
                         ?: getString(R.string.alarm_validation_backend_unavailable)
-                    binding.feedbackText.text = errorMessage
+                    feedbackText = errorMessage
                     toast(errorMessage)
                 }
             }
@@ -297,9 +531,8 @@ class AlarmChallengeActivity : AppCompatActivity() {
             onFailure = { }
         )
 
-        binding.progressBar.isVisible = false
-        binding.submitButton.isEnabled = true
-        binding.feedbackText.text = result.feedback
+        isSubmitting = false
+        feedbackText = result.feedback
         if (result.passed) {
             validationPassed = true
             handler.removeCallbacks(entryTimeoutRunnable)
@@ -309,10 +542,10 @@ class AlarmChallengeActivity : AppCompatActivity() {
         } else {
             sendAlarmServiceAction(AlarmRingingService.ACTION_RESUME)
             setEntryMode(unlocked = false, showTimeoutMessage = false)
-            binding.challengeInput.text?.clear()
+            challengeInput = ""
             imageBytes = null
             localImagePath = ""
-            binding.photoStatus.text = getString(R.string.alarm_retry_needed)
+            photoStatus = getString(R.string.alarm_retry_needed)
         }
     }
 
@@ -337,18 +570,17 @@ class AlarmChallengeActivity : AppCompatActivity() {
         if (!validationPassed && !isLaunchingCamera) {
             handler.postDelayed({
                 if (!isFinishing && !isDestroyed && !isLaunchingCamera) {
-                    startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                    val relaunchIntent = Intent(intent).apply {
+                        addFlags(
+                            android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                                android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                                android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        )
+                    }
+                    startActivity(relaunchIntent)
                 }
             }, 350)
         }
-    }
-
-    private fun toast(messageRes: Int) {
-        Toast.makeText(this, messageRes, Toast.LENGTH_SHORT).show()
-    }
-
-    private fun toast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     override fun onResume() {
@@ -378,20 +610,14 @@ class AlarmChallengeActivity : AppCompatActivity() {
 
     private fun setEntryMode(unlocked: Boolean, showTimeoutMessage: Boolean) {
         entryUnlocked = unlocked
-        binding.entryContent.isVisible = unlocked
-        binding.startEntryOverlay.isVisible = !unlocked
-        binding.capturePhotoButton.isEnabled = unlocked
-        binding.submitButton.isEnabled = unlocked && !binding.progressBar.isVisible
-        binding.challengeInput.isEnabled = unlocked
         if (!unlocked) {
             handler.removeCallbacks(entryTimeoutRunnable)
-            binding.progressBar.isVisible = false
-            binding.submitButton.isEnabled = false
+            isSubmitting = false
             if (showTimeoutMessage) {
-                binding.feedbackText.text = getString(R.string.alarm_entry_expired)
+                feedbackText = getString(R.string.alarm_entry_expired)
             }
         } else {
-            binding.feedbackText.text = ""
+            feedbackText = ""
         }
     }
 
@@ -409,7 +635,26 @@ class AlarmChallengeActivity : AppCompatActivity() {
         })
     }
 
+    private fun toast(messageRes: Int) {
+        Toast.makeText(this, messageRes, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun toast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
     companion object {
         private const val ENTRY_TIMEOUT_MS = 3L * 60L * 1000L
     }
+}
+
+@Composable
+private fun rememberAlarmGradient(
+    start: Color,
+    middle: Color,
+    end: Color
+): Brush {
+    return Brush.verticalGradient(
+        colors = listOf(start, middle, end)
+    )
 }

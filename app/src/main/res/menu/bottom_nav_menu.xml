@@ -28,4 +28,8 @@
         android:id="@+id/tab_breathe"
         android:icon="@drawable/ic_tab_breathe"
         android:title="@string/problem_breathe" />
+    <item
+        android:id="@+id/tab_challenges"
+        android:icon="@drawable/ic_tab_placeholder"
+        android:title="@string/problem_challenges" />
 </menu>
