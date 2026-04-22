@@ -4,9 +4,16 @@ enum class ProblemArea(
     val menuItemId: Int,
     val titleRes: Int,
     val subtitleRes: Int,
-    val iconRes: Int
+    val iconRes: Int,
+    val hasLiveScreen: Boolean = false
 ) {
-    WAKE_UP(R.id.tab_wake_up, R.string.problem_wake_up, R.string.problem_wake_up_subtitle, R.drawable.ic_tab_wake_up),
+    WAKE_UP(
+        R.id.tab_wake_up,
+        R.string.problem_wake_up,
+        R.string.problem_wake_up_subtitle,
+        R.drawable.ic_tab_wake_up,
+        hasLiveScreen = true
+    ),
     SLEEP_SCHEDULE(
         R.id.tab_sleep_schedule,
         R.string.problem_sleep_schedule,
@@ -42,6 +49,12 @@ enum class ProblemArea(
         R.string.problem_breathe,
         R.string.problem_breathe_subtitle,
         R.drawable.ic_tab_breathe
+    ),
+    CHALLENGES(
+        R.id.tab_challenges,
+        R.string.problem_challenges,
+        R.string.problem_challenges_subtitle,
+        R.drawable.ic_tab_placeholder
     );
 
     companion object {

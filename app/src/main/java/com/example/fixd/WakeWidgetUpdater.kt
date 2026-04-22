@@ -5,6 +5,7 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import androidx.core.graphics.ColorUtils
 import android.view.View
 import android.widget.RemoteViews
 import java.time.Instant
@@ -26,6 +27,8 @@ object WakeWidgetUpdater {
     fun buildRemoteViews(context: Context): RemoteViews {
         val submissions = WakeSubmissionCache.getSubmissions(context)
         val stats = WakeStatsCalculator.calculate(submissions)
+        val palette = ThemePaletteManager.currentPalette(context)
+        val widgetBackground = ColorUtils.blendARGB(palette.primary, palette.gradientMid, 0.5f)
         val recentEntries = submissions
             .sortedByDescending { WakeSubmissionUi.primaryTimestamp(it) }
             .take(2)
@@ -44,19 +47,28 @@ object WakeWidgetUpdater {
             "awake" -> {
                 remoteViews.setViewVisibility(R.id.widgetStatus, View.VISIBLE)
                 remoteViews.setTextViewText(R.id.widgetStatus, context.getString(R.string.wake_history_status_awake))
-                remoteViews.setTextColor(R.id.widgetStatus, context.getColor(R.color.brand_success))
+                remoteViews.setTextColor(
+                    R.id.widgetStatus,
+                    ThemePaletteManager.readableColorOn(widgetBackground, palette.success, palette)
+                )
                 remoteViews.setTextViewText(R.id.widgetStatusDetail, context.getString(R.string.widget_status_ready))
             }
             "asleep" -> {
                 remoteViews.setViewVisibility(R.id.widgetStatus, View.VISIBLE)
                 remoteViews.setTextViewText(R.id.widgetStatus, context.getString(R.string.wake_history_status_asleep))
-                remoteViews.setTextColor(R.id.widgetStatus, context.getColor(R.color.wake_status_asleep))
+                remoteViews.setTextColor(
+                    R.id.widgetStatus,
+                    ThemePaletteManager.readableColorOn(widgetBackground, palette.danger, palette)
+                )
                 remoteViews.setTextViewText(R.id.widgetStatusDetail, context.getString(R.string.widget_status_retry))
             }
             else -> {
                 remoteViews.setViewVisibility(R.id.widgetStatus, View.VISIBLE)
                 remoteViews.setTextViewText(R.id.widgetStatus, context.getString(R.string.wake_history_status_pending))
-                remoteViews.setTextColor(R.id.widgetStatus, context.getColor(R.color.white))
+                remoteViews.setTextColor(
+                    R.id.widgetStatus,
+                    ThemePaletteManager.readableTextColorOn(widgetBackground, palette)
+                )
                 remoteViews.setTextViewText(R.id.widgetStatusDetail, context.getString(R.string.widget_status_pending))
             }
         }

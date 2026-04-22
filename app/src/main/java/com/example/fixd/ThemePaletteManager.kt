@@ -45,16 +45,19 @@ data class GeneratedPalette(
     val secondary: Int,
     val surface: Int,
     val card: Int,
-    val text: Int,
-    val textMuted: Int,
     val success: Int,
     val danger: Int,
     val accent: Int,
-    val gradientMid: Int,
-    val onPrimary: Int,
-    val onCard: Int,
-    val onSurface: Int
+    val gradientMid: Int
 )
+
+enum class SurfaceRole {
+    SURFACE,
+    CARD,
+    PRIMARY,
+    SECONDARY,
+    INPUT
+}
 
 object ThemePaletteManager {
     const val DEFAULT_SEED_COLOR = 0xFF168AA7.toInt()
@@ -111,20 +114,17 @@ object ThemePaletteManager {
         val surface = if (isDarkMode) {
             ColorUtils.blendARGB(surfaceBase, primaryDark, 0.16f)
         } else {
-            surfaceBase
+            val liftedSurface = ColorUtils.blendARGB(surfaceBase, primary, 0.05f)
+            ColorUtils.blendARGB(liftedSurface, secondary, 0.035f)
         }
         val card = if (isDarkMode) {
             ColorUtils.blendARGB(cardBase, primary, 0.12f)
         } else {
-            cardBase
+            val tintedCard = ColorUtils.blendARGB(cardBase, primary, 0.14f)
+            ColorUtils.blendARGB(tintedCard, gradientMid, 0.08f)
         }
-        val text = if (isDarkMode) 0xFFF3FAFC.toInt() else 0xFF102A35.toInt()
-        val textMuted = ColorUtils.blendARGB(text, surface, 0.42f)
         val success = if (isDarkMode) 0xFF7AD9B2.toInt() else 0xFF1E8A66.toInt()
         val danger = if (isDarkMode) 0xFFFF8B8B.toInt() else 0xFFB03A3A.toInt()
-        val onPrimary = if (ColorUtils.calculateLuminance(primary) > 0.45) Color.BLACK else Color.WHITE
-        val onCard = if (ColorUtils.calculateLuminance(card) > 0.45) 0xFF102A35.toInt() else 0xFFF3FAFC.toInt()
-        val onSurface = if (ColorUtils.calculateLuminance(surface) > 0.45) 0xFF102A35.toInt() else 0xFFF3FAFC.toInt()
 
         return GeneratedPalette(
             primary = primary,
@@ -132,15 +132,10 @@ object ThemePaletteManager {
             secondary = secondary,
             surface = surface,
             card = card,
-            text = text,
-            textMuted = textMuted,
             success = success,
             danger = danger,
             accent = accent,
-            gradientMid = gradientMid,
-            onPrimary = onPrimary,
-            onCard = onCard,
-            onSurface = onSurface
+            gradientMid = gradientMid
         )
     }
 
@@ -192,11 +187,16 @@ object ThemePaletteManager {
     fun applyToView(view: View?, palette: GeneratedPalette) {
         if (view == null) return
 
+        if (view.id == android.R.id.content) {
+            assignSurfaceRole(view, SurfaceRole.SURFACE)
+        }
+
         when (view) {
             is MistBorderView -> {
                 view.applyPalette(palette)
             }
             is MaterialCardView -> {
+                assignSurfaceRole(view, SurfaceRole.CARD)
                 view.setCardBackgroundColor(palette.card)
                 view.strokeColor = Color.TRANSPARENT
             }
@@ -207,6 +207,7 @@ object ThemePaletteManager {
                 applyPlainButtonColors(view, palette)
             }
             is BottomNavigationView -> {
+                assignSurfaceRole(view, SurfaceRole.CARD)
                 val navBackground = palette.card
                 val selectedColor = ensureContrast(readableAccentOn(navBackground, palette), navBackground, palette)
                 val unselectedColor = adaptiveMutedTextColor(navBackground, palette)
@@ -221,6 +222,7 @@ object ThemePaletteManager {
                 view.itemTextColor = stateList
             }
             is NavigationView -> {
+                assignSurfaceRole(view, SurfaceRole.CARD)
                 val navBackground = palette.card
                 val selectedColor = ensureContrast(readableAccentOn(navBackground, palette), navBackground, palette)
                 val defaultColor = adaptiveTextColor(navBackground, palette)
@@ -234,9 +236,10 @@ object ThemePaletteManager {
                 view.itemTextColor = ColorStateList(states, colors)
             }
             is TextInputLayout -> {
+                assignSurfaceRole(view, SurfaceRole.INPUT)
                 val fieldBackground = resolveFieldBackground(view, palette)
-                val fieldText = adaptiveTextColor(fieldBackground, palette)
-                val fieldHint = adaptiveMutedTextColor(fieldBackground, palette)
+                val fieldText = contentColorForRole(SurfaceRole.INPUT, palette)
+                val fieldHint = mutedContentColorForRole(SurfaceRole.INPUT, palette, fallbackBackground = fieldBackground)
                 view.boxBackgroundColor = fieldBackground
                 view.defaultHintTextColor = ColorStateList.valueOf(fieldHint)
                 view.setHintTextColor(ColorStateList.valueOf(fieldHint))
@@ -250,15 +253,17 @@ object ThemePaletteManager {
                 view.setErrorTextColor(ColorStateList.valueOf(ensureContrast(palette.danger, fieldBackground, palette)))
                 view.editText?.setTextColor(fieldText)
                 view.editText?.setHintTextColor(fieldHint)
+                view.editText?.let { assignSurfaceRole(it, SurfaceRole.INPUT) }
             }
             is TextInputEditText, is EditText -> {
+                assignSurfaceRole(view, SurfaceRole.INPUT)
                 val inputBackground = resolveTextSurface(view, palette)
-                (view as TextView).setTextColor(adaptiveTextColor(inputBackground, palette))
-                view.setHintTextColor(adaptiveMutedTextColor(inputBackground, palette))
+                (view as TextView).setTextColor(contentColorForRole(SurfaceRole.INPUT, palette))
+                view.setHintTextColor(mutedContentColorForRole(SurfaceRole.INPUT, palette, fallbackBackground = inputBackground))
             }
             is LinearProgressIndicator -> {
                 view.setIndicatorColor(palette.secondary)
-                view.trackColor = ColorUtils.blendARGB(palette.surface, palette.textMuted, 0.18f)
+                view.trackColor = ColorUtils.blendARGB(palette.surface, baseMutedTextColor(palette), 0.18f)
             }
             is ProgressBar -> {
                 view.indeterminateTintList = ColorStateList.valueOf(palette.primary)
@@ -271,7 +276,7 @@ object ThemePaletteManager {
                 applyCompoundButtonColors(view, palette)
             }
             is SwitchMaterial -> {
-                val switchText = adaptiveTextColor(resolveTextSurface(view, palette), palette)
+                val switchText = contentColorForView(view, palette)
                 val states = arrayOf(
                     intArrayOf(android.R.attr.state_checked),
                     intArrayOf()
@@ -279,13 +284,13 @@ object ThemePaletteManager {
                 view.setTextColor(switchText)
                 view.thumbTintList = ColorStateList(
                     states,
-                    intArrayOf(palette.primary, ColorUtils.blendARGB(palette.card, palette.textMuted, 0.25f))
+                    intArrayOf(palette.primary, ColorUtils.blendARGB(palette.card, baseMutedTextColor(palette), 0.25f))
                 )
                 view.trackTintList = ColorStateList(
                     states,
                     intArrayOf(
                         ColorUtils.setAlphaComponent(palette.primary, 130),
-                        ColorUtils.blendARGB(palette.surface, palette.textMuted, 0.18f)
+                        ColorUtils.blendARGB(palette.surface, baseMutedTextColor(palette), 0.18f)
                     )
                 )
             }
@@ -351,23 +356,26 @@ object ThemePaletteManager {
     }
 
     private fun applyContainerBackground(view: View, palette: GeneratedPalette) {
+        val role = if (view is ScrollView) SurfaceRole.CARD else SurfaceRole.SURFACE
+        assignSurfaceRole(view, role)
         when (val background = view.background) {
             is GradientDrawable -> {
                 val updated = ((background.constantState?.newDrawable()?.mutate()) as? GradientDrawable)
                     ?: (background.mutate() as GradientDrawable)
                 updated.setColor(
-                    if (view is ScrollView) palette.card else palette.surface
+                    surfaceColorForRole(role, palette)
                 )
                 view.background = updated
             }
             else -> {
-                view.setBackgroundColor(if (view is ScrollView) palette.card else palette.surface)
+                view.setBackgroundColor(surfaceColorForRole(role, palette))
             }
         }
     }
 
     private fun applyButtonColors(button: MaterialButton, palette: GeneratedPalette) {
         val isOutlined = button.strokeWidth > 0
+        assignSurfaceRole(button, if (isOutlined) SurfaceRole.CARD else SurfaceRole.PRIMARY)
         val states = arrayOf(
             intArrayOf(-android.R.attr.state_enabled),
             intArrayOf()
@@ -394,15 +402,15 @@ object ThemePaletteManager {
             button.strokeColor = ColorStateList(
                 states,
                 intArrayOf(
-                    ColorUtils.blendARGB(palette.textMuted, disabledBackground, 0.24f),
+                    ColorUtils.blendARGB(baseMutedTextColor(palette), disabledBackground, 0.24f),
                     palette.primary
                 )
             )
         } else {
             val enabledBackground = palette.primary
             val disabledBackground = ColorUtils.blendARGB(palette.primary, palette.card, 0.72f)
-            val enabledText = readableTextOn(enabledBackground, palette, fallback = palette.onPrimary)
-            val disabledText = readableTextOn(disabledBackground, palette, fallback = palette.textMuted)
+            val enabledText = readableTextOn(enabledBackground, palette, fallback = contentColorForRole(SurfaceRole.PRIMARY, palette))
+            val disabledText = readableTextOn(disabledBackground, palette, fallback = baseMutedTextColor(palette))
             button.backgroundTintList = ColorStateList(
                 states,
                 intArrayOf(disabledBackground, enabledBackground)
@@ -422,12 +430,12 @@ object ThemePaletteManager {
                 intArrayOf(disabledBackground, palette.primaryDark)
             )
         }
-        button.rippleColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(readableTextOn(palette.primary, palette, palette.onPrimary), 26))
+        button.rippleColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(readableTextOn(palette.primary, palette, contentColorForRole(SurfaceRole.PRIMARY, palette)), 26))
     }
 
     private fun applyCompoundButtonColors(button: CompoundButton, palette: GeneratedPalette) {
         val background = resolveTextSurface(button, palette)
-        val textColor = adaptiveTextColor(background, palette)
+        val textColor = contentColorForView(button, palette, fallbackBackground = background)
         val states = arrayOf(
             intArrayOf(android.R.attr.state_checked),
             intArrayOf()
@@ -436,7 +444,7 @@ object ThemePaletteManager {
             states,
             intArrayOf(
                 palette.primary,
-                ColorUtils.blendARGB(palette.card, palette.textMuted, 0.32f)
+                ColorUtils.blendARGB(palette.card, baseMutedTextColor(palette), 0.32f)
             )
         )
         button.buttonTintList = tint
@@ -446,7 +454,7 @@ object ThemePaletteManager {
     private fun applyChipColors(chip: Chip, palette: GeneratedPalette) {
         val checkedBackground = ColorUtils.setAlphaComponent(palette.primary, 230)
         val uncheckedBackground = ColorUtils.blendARGB(palette.card, palette.surface, 0.35f)
-        val checkedText = readableTextOn(checkedBackground, palette, palette.onPrimary)
+        val checkedText = readableTextOn(checkedBackground, palette, contentColorForRole(SurfaceRole.PRIMARY, palette))
         val uncheckedText = adaptiveTextColor(uncheckedBackground, palette)
         val states = arrayOf(
             intArrayOf(android.R.attr.state_checked),
@@ -474,9 +482,9 @@ object ThemePaletteManager {
         )
         chip.chipIconTint = ColorStateList(
             states,
-            intArrayOf(palette.onPrimary, palette.primary)
+            intArrayOf(contentColorForRole(SurfaceRole.PRIMARY, palette), palette.primary)
         )
-        chip.checkedIconTint = ColorStateList.valueOf(palette.onPrimary)
+        chip.checkedIconTint = ColorStateList.valueOf(contentColorForRole(SurfaceRole.PRIMARY, palette))
         chip.rippleColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.primary, 36))
     }
 
@@ -499,26 +507,30 @@ object ThemePaletteManager {
 
     private fun applyTextColor(textView: TextView, palette: GeneratedPalette) {
         val background = resolveTextSurface(textView, palette)
-        textView.setTextColor(adaptiveTextColor(background, palette))
+        val textColor = contentColorForView(textView, palette, fallbackBackground = background)
+        textView.setTextColor(textColor)
         textView.setLinkTextColor(ensureContrast(readableAccentOn(background, palette), background, palette))
     }
 
     private fun chooseTextForContext(textView: TextView, palette: GeneratedPalette, preferLight: Boolean): Int {
         val background = findNearestSolidBackground(textView)
         if (background != null) {
-            return if (ColorUtils.calculateContrast(palette.text, background) >= 4.5) {
-                palette.text
-            } else if (ColorUtils.calculateContrast(palette.onSurface, background) >= 4.5) {
-                palette.onSurface
-            } else if (ColorUtils.calculateContrast(palette.onCard, background) >= 4.5) {
-                palette.onCard
+            val baseText = baseTextColor(palette)
+            val onSurface = contentColorForRole(SurfaceRole.SURFACE, palette)
+            val onCard = contentColorForRole(SurfaceRole.CARD, palette)
+            return if (ColorUtils.calculateContrast(baseText, background) >= 4.5) {
+                baseText
+            } else if (ColorUtils.calculateContrast(onSurface, background) >= 4.5) {
+                onSurface
+            } else if (ColorUtils.calculateContrast(onCard, background) >= 4.5) {
+                onCard
             } else if (preferLight) {
                 Color.WHITE
             } else {
-                palette.text
+                baseText
             }
         }
-        return if (preferLight) Color.WHITE else palette.text
+        return if (preferLight) Color.WHITE else baseTextColor(palette)
     }
 
     private fun readableTextOn(background: Int, palette: GeneratedPalette, fallback: Int): Int {
@@ -528,10 +540,10 @@ object ThemePaletteManager {
             background
         }
         val candidates = listOf(
-            palette.onPrimary,
-            palette.onCard,
-            palette.onSurface,
-            palette.text,
+            contentColorForRole(SurfaceRole.PRIMARY, palette),
+            contentColorForRole(SurfaceRole.CARD, palette),
+            contentColorForRole(SurfaceRole.SURFACE, palette),
+            baseTextColor(palette),
             Color.WHITE,
             Color.BLACK,
             fallback
@@ -545,22 +557,74 @@ object ThemePaletteManager {
             palette.primary,
             palette.secondary,
             palette.accent,
-            palette.text,
-            palette.onSurface,
-            palette.onCard
+            baseTextColor(palette),
+            contentColorForRole(SurfaceRole.SURFACE, palette),
+            contentColorForRole(SurfaceRole.CARD, palette)
         ).distinct()
         return accentCandidates
             .filter { ColorUtils.calculateContrast(it, resolvedBackground) >= 4.5 }
             .maxByOrNull { ColorUtils.calculateContrast(it, resolvedBackground) }
-            ?: readableTextOn(resolvedBackground, palette, palette.text)
+            ?: readableTextOn(resolvedBackground, palette, baseTextColor(palette))
     }
 
     fun adaptiveTextColorForView(view: View, palette: GeneratedPalette = currentPalette(view.context)): Int {
-        return adaptiveTextColor(resolveTextSurface(view, palette), palette)
+        return contentColorForView(view, palette, fallbackBackground = resolveTextSurface(view, palette))
     }
 
     fun adaptiveMutedTextColorForView(view: View, palette: GeneratedPalette = currentPalette(view.context)): Int {
-        return adaptiveMutedTextColor(resolveTextSurface(view, palette), palette)
+        return mutedContentColorForView(view, palette, fallbackBackground = resolveTextSurface(view, palette))
+    }
+
+    fun surfaceColorForRole(role: SurfaceRole, palette: GeneratedPalette): Int {
+        return when (role) {
+            SurfaceRole.SURFACE -> palette.surface
+            SurfaceRole.CARD, SurfaceRole.INPUT -> palette.card
+            SurfaceRole.PRIMARY -> palette.primary
+            SurfaceRole.SECONDARY -> palette.secondary
+        }
+    }
+
+    fun contentColorForRole(role: SurfaceRole, palette: GeneratedPalette): Int {
+        return when (role) {
+            SurfaceRole.SURFACE -> chooseNeutralContentColor(palette.surface, palette)
+            SurfaceRole.CARD, SurfaceRole.INPUT -> chooseNeutralContentColor(palette.card, palette)
+            SurfaceRole.PRIMARY -> chooseNeutralContentColor(palette.primary, palette)
+            SurfaceRole.SECONDARY -> chooseNeutralContentColor(palette.secondary, palette)
+        }
+    }
+
+    fun mutedContentColorForRole(
+        role: SurfaceRole,
+        palette: GeneratedPalette,
+        fallbackBackground: Int = surfaceColorForRole(role, palette)
+    ): Int {
+        return adaptiveMutedTextColor(fallbackBackground, palette).let { muted ->
+            val base = contentColorForRole(role, palette)
+            if (ColorUtils.calculateContrast(muted, fallbackBackground) >= 3.2) muted
+            else adaptiveMutedTextColor(base, palette)
+        }
+    }
+
+    fun readableTextColorOn(background: Int, palette: GeneratedPalette): Int {
+        return readableTextOn(background, palette, baseTextColor(palette))
+    }
+
+    fun readableColorOn(
+        background: Int,
+        desiredColor: Int,
+        palette: GeneratedPalette,
+        minContrast: Double = 4.5
+    ): Int {
+        return ensureContrast(desiredColor, background, palette, minContrast)
+    }
+
+    fun readableColorForView(
+        view: View,
+        desiredColor: Int,
+        palette: GeneratedPalette = currentPalette(view.context),
+        minContrast: Double = 4.5
+    ): Int {
+        return ensureContrast(desiredColor, resolveTextSurface(view, palette), palette, minContrast)
     }
 
     private fun findNearestSolidBackground(view: View): Int? {
@@ -579,6 +643,7 @@ object ThemePaletteManager {
         if (textInputParent != null && textInputParent.boxBackgroundColor != Color.TRANSPARENT) {
             return compositeOnSurface(textInputParent.boxBackgroundColor, palette)
         }
+        nearestSurfaceRole(view)?.let { return surfaceColorForRole(it, palette) }
         return resolveEffectiveBackground(view, palette)
     }
 
@@ -605,7 +670,7 @@ object ThemePaletteManager {
     }
 
     private fun adaptiveTextColor(background: Int, palette: GeneratedPalette): Int {
-        return readableTextOn(background, palette, palette.text)
+        return readableTextOn(background, palette, baseTextColor(palette))
     }
 
     private fun adaptiveMutedTextColor(background: Int, palette: GeneratedPalette): Int {
@@ -659,6 +724,68 @@ object ThemePaletteManager {
         return ColorUtils.calculateLuminance(palette.surface) < 0.3
     }
 
+    private fun contentColorForView(
+        view: View,
+        palette: GeneratedPalette,
+        fallbackBackground: Int = resolveTextSurface(view, palette)
+    ): Int {
+        val role = nearestSurfaceRole(view)
+        return if (role != null) {
+            contentColorForRole(role, palette)
+        } else {
+            adaptiveTextColor(fallbackBackground, palette)
+        }
+    }
+
+    private fun mutedContentColorForView(
+        view: View,
+        palette: GeneratedPalette,
+        fallbackBackground: Int = resolveTextSurface(view, palette)
+    ): Int {
+        val role = nearestSurfaceRole(view)
+        return if (role != null) {
+            mutedContentColorForRole(role, palette, fallbackBackground)
+        } else {
+            adaptiveMutedTextColor(fallbackBackground, palette)
+        }
+    }
+
+    private fun assignSurfaceRole(view: View, role: SurfaceRole) {
+        view.setTag(R.id.tag_theme_surface_role, role)
+    }
+
+    private fun nearestSurfaceRole(view: View): SurfaceRole? {
+        var current: View? = view
+        while (current != null) {
+            val role = current.getTag(R.id.tag_theme_surface_role) as? SurfaceRole
+            if (role != null) return role
+            current = current.parent as? View
+        }
+        return null
+    }
+
+    private fun baseTextColor(palette: GeneratedPalette): Int {
+        return if (isDarkPalette(palette)) 0xFFF3FAFC.toInt() else 0xFF102A35.toInt()
+    }
+
+    private fun baseMutedTextColor(palette: GeneratedPalette): Int {
+        return ColorUtils.blendARGB(baseTextColor(palette), palette.surface, 0.42f)
+    }
+
+    private fun chooseNeutralContentColor(background: Int, palette: GeneratedPalette): Int {
+        val baseText = baseTextColor(palette)
+        val alternate = if (ColorUtils.calculateLuminance(baseText) > 0.5) Color.BLACK else Color.WHITE
+        return if (ColorUtils.calculateContrast(baseText, background) >= 4.5) {
+            baseText
+        } else if (ColorUtils.calculateContrast(alternate, background) >= 4.5) {
+            alternate
+        } else if (ColorUtils.calculateContrast(Color.WHITE, background) >= ColorUtils.calculateContrast(Color.BLACK, background)) {
+            Color.WHITE
+        } else {
+            Color.BLACK
+        }
+    }
+
     private inline fun <reified T : View> hasAncestorOfType(view: View): Boolean {
         var current = view.parent as? View
         while (current != null) {
@@ -678,7 +805,7 @@ object ThemePaletteManager {
         val textColor = readableTextOn(
             background = background,
             palette = palette,
-            fallback = if (filled) palette.onPrimary else palette.text
+            fallback = if (filled) contentColorForRole(SurfaceRole.PRIMARY, palette) else baseTextColor(palette)
         )
         val strokeColor = if (filled) {
             palette.primaryDark
@@ -700,13 +827,14 @@ object ThemePaletteManager {
     }
 
     private fun applyPlainButtonColors(button: Button, palette: GeneratedPalette) {
+        assignSurfaceRole(button, SurfaceRole.PRIMARY)
         val background = findNearestSolidBackground(button) ?: palette.surface
         val buttonBackground = if (ColorUtils.calculateContrast(palette.primary, background) >= 2.2) {
             palette.primary
         } else {
             readableAccentOn(background, palette)
         }
-        val textColor = readableTextOn(buttonBackground, palette, palette.onPrimary)
+        val textColor = readableTextOn(buttonBackground, palette, contentColorForRole(SurfaceRole.PRIMARY, palette))
         button.backgroundTintList = ColorStateList.valueOf(buttonBackground)
         button.setTextColor(textColor)
     }

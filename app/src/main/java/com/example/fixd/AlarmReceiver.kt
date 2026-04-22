@@ -29,6 +29,16 @@ class AlarmReceiver : BroadcastReceiver() {
             putExtra(EXTRA_TRIGGERED_AT, triggeredAt)
         }
         ContextCompat.startForegroundService(context, serviceIntent)
+
+        val activityIntent = Intent(context, AlarmChallengeActivity::class.java).apply {
+            putExtra(EXTRA_ALARM_ID, alarmId)
+            putExtra(EXTRA_ALARM_NAME, alarmName)
+            putExtra(EXTRA_ALARM_HOUR, alarmHour)
+            putExtra(EXTRA_ALARM_MINUTE, alarmMinute)
+            putExtra(EXTRA_TRIGGERED_AT, triggeredAt)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        runCatching { context.startActivity(activityIntent) }
     }
 
     companion object {

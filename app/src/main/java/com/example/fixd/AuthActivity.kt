@@ -2,13 +2,56 @@ package com.example.fixd
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.View
 import android.widget.Toast
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.transition.AutoTransition
-import androidx.transition.TransitionManager
-import com.example.fixd.databinding.ActivityAuthBinding
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
@@ -20,14 +63,22 @@ import com.google.firebase.auth.UserProfileChangeRequest
 
 class AuthActivity : AppCompatActivity() {
 
-    private lateinit var binding: ActivityAuthBinding
     private lateinit var auth: FirebaseAuth
     private var googleSignInClient: GoogleSignInClient? = null
-    private var isSignUpMode = false
+
+    private var isSignUpMode by mutableStateOf(false)
+    private var isLoading by mutableStateOf(false)
+    private var nameInput by mutableStateOf("")
+    private var emailInput by mutableStateOf("")
+    private var passwordInput by mutableStateOf("")
+    private var confirmPasswordInput by mutableStateOf("")
+    private var verificationMessage by mutableStateOf<String?>(null)
+    private var firebaseReady by mutableStateOf(true)
+
     private val googleSignInLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode != RESULT_OK) {
-                setLoading(false)
+                updateLoading(false)
                 toast(R.string.google_sign_in_cancelled)
                 return@registerForActivityResult
             }
@@ -39,14 +90,14 @@ class AuthActivity : AppCompatActivity() {
                 val idToken = account.idToken
 
                 if (idToken.isNullOrBlank()) {
-                    setLoading(false)
+                    updateLoading(false)
                     toast(R.string.google_sign_in_not_ready)
                     return@registerForActivityResult
                 }
 
                 firebaseAuthWithGoogle(idToken)
             } catch (exception: ApiException) {
-                setLoading(false)
+                updateLoading(false)
                 toast(exception.localizedMessage ?: getString(R.string.google_sign_in_not_ready))
             }
         }
@@ -56,65 +107,59 @@ class AuthActivity : AppCompatActivity() {
         ThemePaletteManager.loadCachedSettings(this)
         ThemePaletteManager.applyOverlay(this)
         super.onCreate(savedInstanceState)
-        binding = ActivityAuthBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        ThemePaletteManager.applyToActivity(this)
+        enableEdgeToEdge()
 
         val firebaseApp = FirebaseApp.initializeApp(this)
         if (firebaseApp == null) {
+            firebaseReady = false
             toast(R.string.firebase_not_ready)
-            binding.primaryActionButton.isEnabled = false
-            binding.toggleModeButton.isEnabled = false
-            return
+        } else {
+            auth = FirebaseAuth.getInstance(firebaseApp)
         }
 
-        auth = FirebaseAuth.getInstance(firebaseApp)
-
-        binding.primaryActionButton.setOnClickListener {
-            if (isSignUpMode) signUp() else signIn()
+        setContent {
+            FixdComposeTheme {
+                AuthScreen(
+                    isSignUpMode = isSignUpMode,
+                    isLoading = isLoading,
+                    firebaseReady = firebaseReady,
+                    name = nameInput,
+                    email = emailInput,
+                    password = passwordInput,
+                    confirmPassword = confirmPasswordInput,
+                    verificationMessage = verificationMessage,
+                    palette = ThemePaletteManager.currentPalette(this),
+                    onNameChange = { nameInput = it },
+                    onEmailChange = { emailInput = it },
+                    onPasswordChange = { passwordInput = it },
+                    onConfirmPasswordChange = { confirmPasswordInput = it },
+                    onPrimaryAction = { if (isSignUpMode) signUp() else signIn() },
+                    onGoogleSignIn = { launchGoogleSignIn() },
+                    onToggleMode = {
+                        isSignUpMode = !isSignUpMode
+                        verificationMessage = null
+                    },
+                    onResendVerification = { resendVerificationEmail() }
+                )
+            }
         }
-        binding.googleSignInButton.setOnClickListener {
-            launchGoogleSignIn()
-        }
-        binding.resendVerificationButton.setOnClickListener {
-            resendVerificationEmail()
-        }
 
-        binding.toggleModeButton.setOnClickListener {
-            isSignUpMode = !isSignUpMode
-            renderMode()
-        }
-
-        renderMode()
-    }
-
-    private fun renderMode() {
-        TransitionManager.beginDelayedTransition(
-            binding.authCard,
-            AutoTransition().apply { duration = 220 }
-        )
-        binding.nameLayout.visibility = if (isSignUpMode) View.VISIBLE else View.GONE
-        binding.confirmPasswordLayout.visibility = if (isSignUpMode) View.VISIBLE else View.GONE
-        binding.primaryActionButton.text = getString(if (isSignUpMode) R.string.sign_up else R.string.sign_in)
-        binding.toggleModeButton.text = getString(
-            if (isSignUpMode) R.string.switch_to_signin else R.string.switch_to_signup
-        )
-        hideVerificationPrompt()
+        ThemePaletteManager.applyToActivity(this)
     }
 
     private fun signIn() {
-        val email = binding.emailEditText.text.toString().trim()
-        val password = binding.passwordEditText.text.toString().trim()
+        val email = emailInput.trim()
+        val password = passwordInput.trim()
 
         if (email.isBlank() || password.isBlank()) {
             toast(R.string.auth_missing_fields)
             return
         }
 
-        setLoading(true)
+        updateLoading(true)
         auth.signInWithEmailAndPassword(email, password)
             .addOnCompleteListener { task ->
-                setLoading(false)
+                updateLoading(false)
                 if (task.isSuccessful) {
                     val user = auth.currentUser
                     user?.reload()?.addOnCompleteListener {
@@ -133,10 +178,10 @@ class AuthActivity : AppCompatActivity() {
     }
 
     private fun signUp() {
-        val name = binding.nameEditText.text.toString().trim()
-        val email = binding.emailEditText.text.toString().trim()
-        val password = binding.passwordEditText.text.toString().trim()
-        val confirmPassword = binding.confirmPasswordEditText.text.toString().trim()
+        val name = nameInput.trim()
+        val email = emailInput.trim()
+        val password = passwordInput.trim()
+        val confirmPassword = confirmPasswordInput.trim()
 
         if (name.isBlank()) {
             toast(R.string.profile_name_required)
@@ -153,7 +198,7 @@ class AuthActivity : AppCompatActivity() {
             return
         }
 
-        setLoading(true)
+        updateLoading(true)
         auth.createUserWithEmailAndPassword(email, password)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
@@ -162,27 +207,23 @@ class AuthActivity : AppCompatActivity() {
                     )?.addOnCompleteListener {
                         auth.currentUser?.sendEmailVerification()?.addOnCompleteListener {
                             auth.signOut()
-                            setLoading(false)
+                            updateLoading(false)
                             isSignUpMode = false
-                            renderMode()
-                            binding.emailEditText.setText(email)
-                            binding.passwordEditText.text?.clear()
-                            binding.confirmPasswordEditText.text?.clear()
-                            showVerificationPrompt(R.string.auth_email_verification_sent)
+                            verificationMessage = getString(R.string.auth_email_verification_sent)
+                            emailInput = email
+                            passwordInput = ""
+                            confirmPasswordInput = ""
                         }
                     }
                 } else {
-                    setLoading(false)
+                    updateLoading(false)
                     toast(task.exception?.localizedMessage ?: getString(R.string.firebase_not_ready))
                 }
             }
     }
 
-    private fun setLoading(isLoading: Boolean) {
-        binding.progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
-        binding.primaryActionButton.isEnabled = !isLoading
-        binding.googleSignInButton.isEnabled = !isLoading
-        binding.toggleModeButton.isEnabled = !isLoading
+    private fun updateLoading(loading: Boolean) {
+        isLoading = loading
     }
 
     private fun launchGoogleSignIn() {
@@ -197,12 +238,12 @@ class AuthActivity : AppCompatActivity() {
             .requestEmail()
             .build()
 
-        setLoading(true)
+        updateLoading(true)
         googleSignInClient = GoogleSignIn.getClient(this, options)
         googleSignInClient?.signOut()?.addOnCompleteListener {
             val intent = googleSignInClient?.signInIntent
             if (intent == null) {
-                setLoading(false)
+                updateLoading(false)
                 toast(R.string.google_sign_in_not_ready)
             } else {
                 googleSignInLauncher.launch(intent)
@@ -214,10 +255,16 @@ class AuthActivity : AppCompatActivity() {
         val credential = GoogleAuthProvider.getCredential(idToken, null)
         auth.signInWithCredential(credential)
             .addOnCompleteListener { task ->
-                setLoading(false)
+                updateLoading(false)
                 if (task.isSuccessful) {
                     hideVerificationPrompt()
-                    openDashboard()
+                    val isNewGoogleUser = task.result?.additionalUserInfo?.isNewUser == true
+                    if (isNewGoogleUser) {
+                        startActivity(NavigationRouter.selectionIntent(this))
+                        finish()
+                    } else {
+                        openDashboard()
+                    }
                 } else {
                     toast(task.exception?.localizedMessage ?: getString(R.string.google_sign_in_not_ready))
                 }
@@ -237,31 +284,31 @@ class AuthActivity : AppCompatActivity() {
     }
 
     private fun resendVerificationEmail() {
-        val email = binding.emailEditText.text.toString().trim()
+        val email = emailInput.trim()
         if (email.isBlank()) {
             toast(R.string.auth_missing_fields)
             return
         }
 
-        setLoading(true)
+        updateLoading(true)
         auth.fetchSignInMethodsForEmail(email)
             .addOnCompleteListener { methodsTask ->
                 if (!methodsTask.isSuccessful) {
-                    setLoading(false)
+                    updateLoading(false)
                     toast(methodsTask.exception?.localizedMessage ?: getString(R.string.firebase_not_ready))
                     return@addOnCompleteListener
                 }
 
                 val methods = methodsTask.result?.signInMethods.orEmpty()
                 if (!methods.contains("password")) {
-                    setLoading(false)
+                    updateLoading(false)
                     toast(R.string.auth_email_verification_required)
                     return@addOnCompleteListener
                 }
 
-                val password = binding.passwordEditText.text.toString().trim()
+                val password = passwordInput.trim()
                 if (password.isBlank()) {
-                    setLoading(false)
+                    updateLoading(false)
                     toast(R.string.auth_missing_fields)
                     return@addOnCompleteListener
                 }
@@ -269,7 +316,7 @@ class AuthActivity : AppCompatActivity() {
                 auth.signInWithEmailAndPassword(email, password)
                     .addOnCompleteListener { signInTask ->
                         if (!signInTask.isSuccessful) {
-                            setLoading(false)
+                            updateLoading(false)
                             toast(signInTask.exception?.localizedMessage ?: getString(R.string.firebase_not_ready))
                             return@addOnCompleteListener
                         }
@@ -277,7 +324,7 @@ class AuthActivity : AppCompatActivity() {
                         val user = auth.currentUser
                         user?.sendEmailVerification()?.addOnCompleteListener {
                             auth.signOut()
-                            setLoading(false)
+                            updateLoading(false)
                             showVerificationPrompt(R.string.auth_email_verification_sent)
                         }
                     }
@@ -285,14 +332,11 @@ class AuthActivity : AppCompatActivity() {
     }
 
     private fun showVerificationPrompt(messageRes: Int) {
-        binding.verificationMessageText.visibility = View.VISIBLE
-        binding.resendVerificationButton.visibility = View.VISIBLE
-        binding.verificationMessageText.text = getString(messageRes)
+        verificationMessage = getString(messageRes)
     }
 
     private fun hideVerificationPrompt() {
-        binding.verificationMessageText.visibility = View.GONE
-        binding.resendVerificationButton.visibility = View.GONE
+        verificationMessage = null
     }
 
     private fun toast(messageRes: Int) {
@@ -301,5 +345,206 @@ class AuthActivity : AppCompatActivity() {
 
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+}
+
+@Composable
+private fun AuthScreen(
+    isSignUpMode: Boolean,
+    isLoading: Boolean,
+    firebaseReady: Boolean,
+    name: String,
+    email: String,
+    password: String,
+    confirmPassword: String,
+    verificationMessage: String?,
+    palette: GeneratedPalette,
+    onNameChange: (String) -> Unit,
+    onEmailChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onConfirmPasswordChange: (String) -> Unit,
+    onPrimaryAction: () -> Unit,
+    onGoogleSignIn: () -> Unit,
+    onToggleMode: () -> Unit,
+    onResendVerification: () -> Unit
+) {
+    val scrollState = rememberScrollState()
+    val heroBrush = Brush.verticalGradient(
+        colors = listOf(
+            Color(palette.surface),
+            Color(palette.gradientMid).copy(alpha = 0.2f),
+            Color(palette.primaryDark).copy(alpha = 0.3f)
+        )
+    )
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(heroBrush)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.Center
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(30.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(88.dp)
+                                .clip(CircleShape)
+                                .background(Color(palette.primary).copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = painterResource(id = R.drawable.ic_fixd_panda_logo_monochrome),
+                                contentDescription = stringResource(id = R.string.app_name),
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.size(72.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(18.dp))
+
+                        Text(
+                            text = stringResource(id = R.string.auth_welcome),
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = stringResource(id = R.string.auth_subtitle),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+
+                        if (isSignUpMode) {
+                            Spacer(modifier = Modifier.height(24.dp))
+                            OutlinedTextField(
+                                value = name,
+                                onValueChange = onNameChange,
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text(stringResource(id = R.string.name_label)) },
+                                singleLine = true,
+                                enabled = firebaseReady && !isLoading
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedTextField(
+                            value = email,
+                            onValueChange = onEmailChange,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(stringResource(id = R.string.email_label)) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                            enabled = firebaseReady && !isLoading
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedTextField(
+                            value = password,
+                            onValueChange = onPasswordChange,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(stringResource(id = R.string.password_label)) },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            enabled = firebaseReady && !isLoading
+                        )
+
+                        if (isSignUpMode) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            OutlinedTextField(
+                                value = confirmPassword,
+                                onValueChange = onConfirmPasswordChange,
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text(stringResource(id = R.string.confirm_password_label)) },
+                                singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                enabled = firebaseReady && !isLoading
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Button(
+                            onClick = onPrimaryAction,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = firebaseReady && !isLoading
+                        ) {
+                            Text(stringResource(id = if (isSignUpMode) R.string.sign_up else R.string.sign_in))
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = onGoogleSignIn,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = firebaseReady && !isLoading
+                        ) {
+                            Text(stringResource(id = R.string.continue_with_google))
+                        }
+
+                        if (isLoading) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            CircularProgressIndicator(
+                                color = MaterialTheme.colorScheme.primary,
+                                strokeWidth = 3.dp
+                            )
+                        }
+
+                        if (!verificationMessage.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = verificationMessage,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedButton(
+                                onClick = onResendVerification,
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = firebaseReady && !isLoading
+                            ) {
+                                Text(stringResource(id = R.string.auth_resend_verification))
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        TextButton(
+                            onClick = onToggleMode,
+                            enabled = firebaseReady && !isLoading
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    id = if (isSignUpMode) R.string.switch_to_signin else R.string.switch_to_signup
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
