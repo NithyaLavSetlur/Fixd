@@ -63,7 +63,7 @@ class AlarmChallengeActivity : AppCompatActivity() {
     private var imageBytes: ByteArray? = null
     private var validationPassed = false
     private var isLaunchingCamera = false
-    private var entryUnlocked = false
+    private var entryUnlocked by mutableStateOf(false)
     private var challengeInput by mutableStateOf("")
     private var photoStatus by mutableStateOf("")
     private var feedbackText by mutableStateOf("")
@@ -166,6 +166,7 @@ class AlarmChallengeActivity : AppCompatActivity() {
     @Composable
     private fun AlarmChallengeScreen() {
         val palette = ThemePaletteManager.currentPalette(this)
+        val canSubmit = challengeInput.trim().isNotEmpty() || imageBytes != null
         val gradient = rememberAlarmGradient(
             start = Color(palette.surface),
             middle = Color(palette.card),
@@ -310,7 +311,7 @@ class AlarmChallengeActivity : AppCompatActivity() {
                             Spacer(modifier = Modifier.height(16.dp))
                             Button(
                                 onClick = { submitChallenge() },
-                                enabled = !isSubmitting,
+                                enabled = canSubmit && !isSubmitting,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(getString(R.string.alarm_submit))

@@ -61,6 +61,13 @@
         <item name="android:navigationBarColor">@color/brand_primary_dark</item>
     </style>
 
+    <style name="Theme.Fixd.Popup" parent="Theme.Fixd">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowCloseOnTouchOutside">true</item>
+    </style>
+
     <style name="ThemeOverlay.Fixd.Palette.Ocean" parent="">
         <item name="colorPrimary">#0F5D7A</item>
         <item name="colorPrimaryVariant">#083C54</item>
