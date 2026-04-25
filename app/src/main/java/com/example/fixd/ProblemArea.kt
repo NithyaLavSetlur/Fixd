@@ -36,7 +36,8 @@ enum class ProblemArea(
         R.id.tab_social_media_distraction,
         R.string.problem_social_media_distraction,
         R.string.problem_social_media_distraction_subtitle,
-        R.drawable.ic_tab_social
+        R.drawable.ic_tab_social,
+        hasLiveScreen = true
     ),
     TO_DO(
         R.id.tab_to_do,

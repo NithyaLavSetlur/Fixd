@@ -1,6 +1,7 @@
 package com.example.fixd
 
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 
 object UserProfileRepository {
     private val firestore by lazy { FirebaseFirestore.getInstance() }
@@ -47,7 +48,8 @@ object UserProfileRepository {
                     "selectedProblems" to profile.selectedProblems,
                     "isPremium" to profile.isPremium,
                     "premiumSince" to profile.premiumSince
-                )
+                ),
+                SetOptions.merge()
             )
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener(onFailure)

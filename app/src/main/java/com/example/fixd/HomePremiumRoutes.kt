@@ -22,6 +22,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -290,4 +291,329 @@ fun ProblemAreaPlaceholderRoute(area: ProblemArea) {
             Text(stringResource(id = R.string.problem_placeholder_button))
         }
     }
+}
+
+@Composable
+fun SocialMediaDistractionRoute() {
+    val context = LocalContext.current
+    val auth = remember { FirebaseAuth.getInstance() }
+    var settings by remember { mutableStateOf(SocialControlPreferences.load(context)) }
+    var saveError by remember { mutableStateOf<String?>(null) }
+    val overlayGranted = SocialControlManager.canDrawOverlays(context)
+
+    LaunchedEffect(Unit) {
+        val user = auth.currentUser ?: return@LaunchedEffect
+        UserSocialControlRepository.getSettings(
+            userId = user.uid,
+            onSuccess = {
+                settings = it
+                SocialControlPreferences.save(context, it)
+                if (it.floatingBubbleEnabled && overlayGranted) {
+                    SocialControlManager.showFloatingBubble(context)
+                } else {
+                    SocialControlManager.hideFloatingBubble(context)
+                }
+                SocialControlManager.refreshOverlay(context)
+                saveError = null
+            },
+            onFailure = {
+                saveError = it.localizedMessage ?: context.getString(R.string.firebase_not_ready)
+            }
+        )
+    }
+
+    fun updateSettings(transform: (SocialControlSettings) -> SocialControlSettings) {
+        val updated = transform(settings)
+        settings = updated
+        SocialControlPreferences.save(context, updated)
+        if (updated.floatingBubbleEnabled && overlayGranted) {
+            SocialControlManager.showFloatingBubble(context)
+        } else {
+            SocialControlManager.hideFloatingBubble(context)
+        }
+        SocialControlManager.refreshOverlay(context)
+        val user = auth.currentUser ?: return
+        UserSocialControlRepository.saveSettings(
+            userId = user.uid,
+            settings = updated,
+            onSuccess = { saveError = null },
+            onFailure = {
+                saveError = it.localizedMessage ?: context.getString(R.string.firebase_not_ready)
+            }
+        )
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(18.dp))
+            Text(
+                text = stringResource(R.string.social_title),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.social_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        if (!saveError.isNullOrBlank()) {
+            item {
+                Text(
+                    text = saveError.orEmpty(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.social_master_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = stringResource(R.string.social_master_body),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = settings.appControlEnabled,
+                            onCheckedChange = {
+                                updateSettings { current -> current.copy(appControlEnabled = it) }
+                            }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = {
+                            Text(
+                                stringResource(
+                                    if (settings.appControlEnabled) {
+                                        R.string.social_status_ready
+                                    } else {
+                                        R.string.social_status_paused
+                                    }
+                                )
+                            )
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.social_setup_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        item {
+            SocialSettingsCard(
+                title = stringResource(R.string.social_permissions_title),
+                body = stringResource(R.string.social_permissions_body)
+            ) {
+                Text(
+                    text = stringResource(
+                        if (overlayGranted) {
+                            R.string.social_overlay_permission_granted
+                        } else {
+                            R.string.social_overlay_permission_missing
+                        }
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = { context.startActivity(SocialControlManager.overlayPermissionIntent(context)) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.social_overlay_permission_button))
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = { context.startActivity(SocialControlManager.accessibilitySettingsIntent()) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.social_accessibility_permission_button))
+                }
+            }
+        }
+
+        item {
+            SocialSettingsCard(
+                title = stringResource(R.string.social_instagram_title),
+                body = stringResource(R.string.social_instagram_body)
+            ) {
+                SocialSettingRow(
+                    title = stringResource(R.string.social_instagram_reels_title),
+                    body = stringResource(R.string.social_instagram_reels_body),
+                    checked = settings.instagramBlockReels,
+                    enabled = settings.appControlEnabled
+                ) {
+                    updateSettings { current -> current.copy(instagramBlockReels = it) }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.social_instagram_messages_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        item {
+            SocialSettingsCard(
+                title = stringResource(R.string.social_youtube_title),
+                body = stringResource(R.string.social_youtube_body)
+            ) {
+                SocialSettingRow(
+                    title = stringResource(R.string.social_youtube_shorts_title),
+                    body = stringResource(R.string.social_youtube_shorts_body),
+                    checked = settings.youtubeBlockShorts,
+                    enabled = settings.appControlEnabled
+                ) {
+                    updateSettings { current -> current.copy(youtubeBlockShorts = it) }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.social_youtube_future_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        item {
+            SocialSettingsCard(
+                title = stringResource(R.string.social_bubble_title),
+                body = stringResource(R.string.social_bubble_body)
+            ) {
+                SocialSettingRow(
+                    title = stringResource(R.string.social_bubble_toggle_title),
+                    body = stringResource(R.string.social_bubble_toggle_body),
+                    checked = settings.floatingBubbleEnabled,
+                    enabled = overlayGranted
+                ) {
+                    updateSettings { current -> current.copy(floatingBubbleEnabled = it) }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = { SocialControlManager.showQuickSettings(context) },
+                    enabled = overlayGranted && settings.floatingBubbleEnabled,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.social_bubble_open_button))
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = stringResource(R.string.social_bubble_note),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = stringResource(R.string.social_bubble_steps),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun SocialSettingsCard(
+    title: String,
+    body: String,
+    content: @Composable () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SocialSettingRow(
+    title: String,
+    body: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = checked,
+            enabled = enabled,
+            onCheckedChange = onCheckedChange
+        )
+    }
+    Spacer(modifier = Modifier.height(14.dp))
 }

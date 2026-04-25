@@ -28,11 +28,24 @@ object WakeWidgetUpdater {
         val submissions = WakeSubmissionCache.getSubmissions(context)
         val stats = WakeStatsCalculator.calculate(submissions)
         val palette = ThemePaletteManager.currentPalette(context)
-        val widgetBackground = ColorUtils.blendARGB(palette.primary, palette.gradientMid, 0.5f)
+        val widgetSurface = ColorUtils.blendARGB(palette.surface, palette.card, 0.55f)
+        val widgetPanel = ColorUtils.blendARGB(palette.card, palette.surface, 0.35f)
+        val titleColor = ThemePaletteManager.readableTextColorOn(widgetSurface, palette)
+        val mutedColor = ColorUtils.blendARGB(titleColor, widgetSurface, 0.52f)
+        val accentTextColor = ThemePaletteManager.readableColorOn(widgetSurface, palette.primary, palette)
         val recentEntries = submissions
             .sortedByDescending { WakeSubmissionUi.primaryTimestamp(it) }
             .take(2)
         val remoteViews = RemoteViews(context.packageName, R.layout.widget_wake_streak)
+        remoteViews.setTextColor(R.id.widgetTitle, accentTextColor)
+        remoteViews.setTextColor(R.id.widgetStreakLabel, mutedColor)
+        remoteViews.setTextColor(R.id.widgetStreakValue, titleColor)
+        remoteViews.setTextColor(R.id.widgetStreakCaption, mutedColor)
+        remoteViews.setTextColor(R.id.widgetTodayLabel, mutedColor)
+        remoteViews.setTextColor(R.id.widgetStatusDetail, mutedColor)
+        remoteViews.setTextColor(R.id.widgetRecentLabel, mutedColor)
+        remoteViews.setTextColor(R.id.widgetRecentPrimary, titleColor)
+        remoteViews.setTextColor(R.id.widgetRecentSecondary, mutedColor)
         remoteViews.setTextViewText(
             R.id.widgetStreakValue,
             when (stats.currentStreak) {
@@ -49,7 +62,7 @@ object WakeWidgetUpdater {
                 remoteViews.setTextViewText(R.id.widgetStatus, context.getString(R.string.wake_history_status_awake))
                 remoteViews.setTextColor(
                     R.id.widgetStatus,
-                    ThemePaletteManager.readableColorOn(widgetBackground, palette.success, palette)
+                    ThemePaletteManager.readableColorOn(widgetPanel, palette.success, palette)
                 )
                 remoteViews.setTextViewText(R.id.widgetStatusDetail, context.getString(R.string.widget_status_ready))
             }
@@ -58,7 +71,7 @@ object WakeWidgetUpdater {
                 remoteViews.setTextViewText(R.id.widgetStatus, context.getString(R.string.wake_history_status_asleep))
                 remoteViews.setTextColor(
                     R.id.widgetStatus,
-                    ThemePaletteManager.readableColorOn(widgetBackground, palette.danger, palette)
+                    ThemePaletteManager.readableColorOn(widgetPanel, palette.danger, palette)
                 )
                 remoteViews.setTextViewText(R.id.widgetStatusDetail, context.getString(R.string.widget_status_retry))
             }
@@ -67,7 +80,7 @@ object WakeWidgetUpdater {
                 remoteViews.setTextViewText(R.id.widgetStatus, context.getString(R.string.wake_history_status_pending))
                 remoteViews.setTextColor(
                     R.id.widgetStatus,
-                    ThemePaletteManager.readableTextColorOn(widgetBackground, palette)
+                    ThemePaletteManager.readableTextColorOn(widgetPanel, palette)
                 )
                 remoteViews.setTextViewText(R.id.widgetStatusDetail, context.getString(R.string.widget_status_pending))
             }

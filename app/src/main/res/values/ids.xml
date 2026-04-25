@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <item name="tag_mist_scroll_bound" type="id" />
     <item name="tag_theme_surface_role" type="id" />
 </resources>

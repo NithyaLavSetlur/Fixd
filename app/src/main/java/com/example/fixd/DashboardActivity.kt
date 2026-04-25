@@ -4,15 +4,21 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -32,20 +38,29 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowInsetsControllerCompat
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class DashboardActivity : AppCompatActivity() {
     private enum class DrawerDestination(val id: Int, val titleRes: Int) {
@@ -264,9 +279,65 @@ class DashboardActivity : AppCompatActivity() {
         val scope = rememberCoroutineScope()
         val currentProblemArea = (currentScreen as? DashboardScreen.Problem)?.area
         val isProblemContext = currentProblemArea != null || currentScreen == DashboardScreen.WakeHistory
+        val hasFloatingTabMenu = currentProblemArea == ProblemArea.WAKE_UP || currentScreen == DashboardScreen.WakeHistory
+        val density = LocalDensity.current
+        val bubbleSize = 58.dp
+        val bubblePadding = 16.dp
+        val bubbleSizePx = with(density) { bubbleSize.toPx() }
+        val bubblePaddingPx = with(density) { bubblePadding.toPx() }
+        var viewportSize by remember { mutableStateOf(IntSize.Zero) }
+        var bubbleOffset by remember { mutableStateOf(Offset.Unspecified) }
+        var bubbleIsDragging by remember { mutableStateOf(false) }
+        val animatedBubbleX by animateFloatAsState(
+            targetValue = if (bubbleOffset == Offset.Unspecified) 0f else bubbleOffset.x,
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 520f),
+            label = "tab_bubble_x"
+        )
+        val animatedBubbleY by animateFloatAsState(
+            targetValue = if (bubbleOffset == Offset.Unspecified) 0f else bubbleOffset.y,
+            animationSpec = spring(dampingRatio = 0.9f, stiffness = 640f),
+            label = "tab_bubble_y"
+        )
+
+        fun clampBubbleOffset(offset: Offset): Offset {
+            if (viewportSize == IntSize.Zero) return offset
+            val maxX = (viewportSize.width.toFloat() - bubbleSizePx - bubblePaddingPx).coerceAtLeast(bubblePaddingPx)
+            val maxY = (viewportSize.height.toFloat() - bubbleSizePx - bubblePaddingPx).coerceAtLeast(bubblePaddingPx)
+            return Offset(
+                x = offset.x.coerceIn(bubblePaddingPx, maxX),
+                y = offset.y.coerceIn(bubblePaddingPx, maxY)
+            )
+        }
+
+        fun snapBubbleToSide(offset: Offset): Offset {
+            if (viewportSize == IntSize.Zero) return offset
+            val maxX = (viewportSize.width.toFloat() - bubbleSizePx - bubblePaddingPx).coerceAtLeast(bubblePaddingPx)
+            val snapX = if (offset.x + (bubbleSizePx / 2f) < viewportSize.width / 2f) bubblePaddingPx else maxX
+            return clampBubbleOffset(offset.copy(x = snapX))
+        }
+
+        LaunchedEffect(hasFloatingTabMenu, viewportSize) {
+            if (!hasFloatingTabMenu) {
+                floatingMenuExpanded = false
+                return@LaunchedEffect
+            }
+            if (viewportSize != IntSize.Zero) {
+                bubbleOffset = if (bubbleOffset == Offset.Unspecified) {
+                    snapBubbleToSide(
+                        Offset(
+                            x = viewportSize.width.toFloat() - bubbleSizePx - bubblePaddingPx,
+                            y = bubblePaddingPx
+                        )
+                    )
+                } else {
+                    snapBubbleToSide(bubbleOffset)
+                }
+            }
+        }
 
         ModalNavigationDrawer(
             drawerState = drawerState,
+            gesturesEnabled = false,
             drawerContent = {
                 ModalDrawerSheet(
                     drawerContainerColor = MaterialTheme.colorScheme.surface,
@@ -300,153 +371,199 @@ class DashboardActivity : AppCompatActivity() {
                 }
             }
         ) {
-            Scaffold(
-                modifier = Modifier.fillMaxSize(),
-                containerColor = MaterialTheme.colorScheme.background,
-                topBar = {
-                    TopAppBar(
-                        title = { Text(screenTitle.ifBlank { stringResource(id = R.string.dashboard_title) }) },
-                        navigationIcon = {
-                            Box {
-                                IconButton(
-                                    onClick = {
-                                        if (isProblemContext) {
-                                            floatingMenuExpanded = !floatingMenuExpanded
-                                        } else {
-                                            scope.launch { drawerState.open() }
-                                        }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onSizeChanged { viewportSize = it }
+            ) {
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    containerColor = MaterialTheme.colorScheme.background,
+                    topBar = {
+                        TopAppBar(
+                            title = { Text(screenTitle.ifBlank { stringResource(id = R.string.dashboard_title) }) },
+                            navigationIcon = {
+                                if (isProblemContext) {
+                                    IconButton(onClick = { showHomePage() }) {
+                                        Icon(Icons.Outlined.Home, contentDescription = stringResource(id = R.string.drawer_home))
                                     }
-                                ) {
-                                    Icon(Icons.Outlined.Menu, contentDescription = stringResource(id = R.string.menu_open))
-                                }
-                                DropdownMenu(
-                                    expanded = floatingMenuExpanded,
-                                    onDismissRequest = { floatingMenuExpanded = false }
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(id = R.string.drawer_home)) },
-                                        onClick = {
-                                            floatingMenuExpanded = false
-                                            showHomePage()
-                                        }
-                                    )
-                                    when {
-                                        currentProblemArea == ProblemArea.WAKE_UP -> {
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(id = R.string.wake_history_full_title)) },
-                                                onClick = {
-                                                    floatingMenuExpanded = false
-                                                    showWakeHistoryPage()
-                                                }
-                                            )
-                                        }
-                                        currentScreen == DashboardScreen.WakeHistory -> {
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(id = R.string.problem_wake_up)) },
-                                                onClick = {
-                                                    floatingMenuExpanded = false
-                                                    showProblemTab(ProblemArea.WAKE_UP)
-                                                }
-                                            )
-                                        }
-                                        currentProblemArea != null -> {
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(id = currentProblemArea.titleRes)) },
-                                                onClick = {
-                                                    floatingMenuExpanded = false
-                                                    showProblemTab(currentProblemArea)
-                                                }
-                                            )
-                                        }
+                                } else {
+                                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                        Icon(Icons.Outlined.Menu, contentDescription = stringResource(id = R.string.menu_open))
                                     }
                                 }
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            titleContentColor = MaterialTheme.colorScheme.onSurface,
-                            navigationIconContentColor = MaterialTheme.colorScheme.onSurface
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                titleContentColor = MaterialTheme.colorScheme.onSurface,
+                                navigationIconContentColor = MaterialTheme.colorScheme.onSurface
+                            )
                         )
-                    )
-                },
-                bottomBar = {
-                    if (selectedProblems.isNotEmpty()) {
-                        NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                            selectedProblems.forEach { area ->
-                                NavigationBarItem(
-                                    selected = selectedBottomNavItemId == area.menuItemId,
-                                    onClick = { showProblemTab(area) },
-                                    icon = {
-                                        Icon(
-                                            painter = painterResource(id = area.iconRes),
-                                            contentDescription = stringResource(id = area.titleRes)
-                                        )
-                                    },
-                                    label = { Text(stringResource(id = area.titleRes)) }
-                                )
+                    },
+                    bottomBar = {
+                        if (selectedProblems.isNotEmpty()) {
+                            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                                selectedProblems.forEach { area ->
+                                    NavigationBarItem(
+                                        selected = selectedBottomNavItemId == area.menuItemId,
+                                        onClick = { showProblemTab(area) },
+                                        icon = {
+                                            Icon(
+                                                painter = painterResource(id = area.iconRes),
+                                                contentDescription = stringResource(id = area.titleRes)
+                                            )
+                                        },
+                                        label = { Text(stringResource(id = area.titleRes)) }
+                                    )
+                                }
                             }
                         }
                     }
-                }
-            ) { innerPadding ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                        .padding(horizontal = 20.dp, vertical = 10.dp)
-                ) {
-                    Text(
-                        text = greetingText,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = stringResource(id = R.string.dashboard_body),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(18.dp))
-                    Card(
-                        modifier = Modifier.fillMaxSize(),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                ) { innerPadding ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                            .padding(horizontal = 20.dp, vertical = 10.dp)
                     ) {
-                        when (val screen = currentScreen) {
-                            DashboardScreen.Home -> HomeRoute(
-                                selectedProblems = selectedProblems,
-                                onOpenArea = { showProblemTab(it) },
-                                onOpenTabDisplayChooser = { showProfilePage() }
-                            )
-                            DashboardScreen.Profile -> ProfileRoute(
-                                onProfileUpdated = {
-                                    auth.currentUser?.reload()?.addOnCompleteListener {
-                                        loadProfile()
-                                        showProfilePage()
+                        Text(
+                            text = greetingText,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(id = R.string.dashboard_body),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(18.dp))
+                        Card(
+                            modifier = Modifier.fillMaxSize(),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                        ) {
+                            when (val screen = currentScreen) {
+                                DashboardScreen.Home -> HomeRoute(
+                                    selectedProblems = selectedProblems,
+                                    onOpenArea = { showProblemTab(it) },
+                                    onOpenTabDisplayChooser = { showProfilePage() }
+                                )
+                                DashboardScreen.Profile -> ProfileRoute(
+                                    onProfileUpdated = {
+                                        auth.currentUser?.reload()?.addOnCompleteListener {
+                                            loadProfile()
+                                            showProfilePage()
+                                        }
                                     }
-                                }
-                            )
-                            DashboardScreen.Settings -> SettingsRoute(
-                                onTabOrderSaved = {
-                                    loadProfile()
-                                    showSettingsPage()
-                                }
-                            )
+                                )
+                                DashboardScreen.Settings -> SettingsRoute(
+                                    onTabOrderSaved = {
+                                        loadProfile()
+                                        showSettingsPage()
+                                    }
+                                )
                             DashboardScreen.Premium -> PremiumRoute()
                             is DashboardScreen.Problem -> {
-                                if (screen.area.hasLiveScreen) {
-                                    WakeRoute(
+                                when (screen.area) {
+                                    ProblemArea.WAKE_UP -> WakeRoute(
                                         pendingCreateAlarm = pendingOpenAction == OPEN_ACTION_CREATE_ALARM,
                                         onCreateAlarmConsumed = { consumePendingOpenAction(OPEN_ACTION_CREATE_ALARM) },
                                         onShowFullHistory = { showWakeHistoryPage() }
                                     )
-                                } else {
-                                    ProblemAreaPlaceholderRoute(screen.area)
+                                    ProblemArea.SOCIAL_MEDIA_DISTRACTION -> SocialMediaDistractionRoute()
+                                    else -> ProblemAreaPlaceholderRoute(screen.area)
                                 }
                             }
-                            DashboardScreen.WakeHistory -> WakeHistoryRoute()
+                                DashboardScreen.WakeHistory -> WakeHistoryRoute()
+                            }
+                        }
+                    }
+                }
+
+                if (hasFloatingTabMenu && bubbleOffset != Offset.Unspecified) {
+                    Box(
+                        modifier = Modifier.offset {
+                            val renderedOffset = if (bubbleIsDragging) bubbleOffset else Offset(animatedBubbleX, animatedBubbleY)
+                            IntOffset(
+                                x = renderedOffset.x.roundToInt(),
+                                y = renderedOffset.y.roundToInt()
+                            )
+                        }
+                    ) {
+                        Card(
+                            modifier = Modifier.pointerInput(viewportSize, isProblemContext) {
+                                detectDragGestures(
+                                    onDragStart = {
+                                        floatingMenuExpanded = false
+                                        bubbleIsDragging = true
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        val currentOffset = if (bubbleOffset == Offset.Unspecified) {
+                                            Offset(bubblePaddingPx, bubblePaddingPx)
+                                        } else {
+                                            bubbleOffset
+                                        }
+                                        bubbleOffset = clampBubbleOffset(
+                                            Offset(
+                                                x = currentOffset.x + dragAmount.x,
+                                                y = currentOffset.y + dragAmount.y
+                                            )
+                                        )
+                                    },
+                                    onDragEnd = {
+                                        bubbleIsDragging = false
+                                        bubbleOffset = snapBubbleToSide(bubbleOffset)
+                                    },
+                                    onDragCancel = {
+                                        bubbleIsDragging = false
+                                        bubbleOffset = snapBubbleToSide(bubbleOffset)
+                                    }
+                                )
+                            },
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+                        ) {
+                            IconButton(
+                                onClick = { floatingMenuExpanded = !floatingMenuExpanded },
+                                modifier = Modifier.padding(2.dp)
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Menu,
+                                    contentDescription = stringResource(id = R.string.menu_open),
+                                    tint = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = floatingMenuExpanded,
+                            onDismissRequest = { floatingMenuExpanded = false }
+                        ) {
+                            when {
+                                currentProblemArea == ProblemArea.WAKE_UP -> {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(id = R.string.wake_history_full_title)) },
+                                        onClick = {
+                                            floatingMenuExpanded = false
+                                            showWakeHistoryPage()
+                                        }
+                                    )
+                                }
+                                currentScreen == DashboardScreen.WakeHistory -> {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(id = R.string.problem_wake_up)) },
+                                        onClick = {
+                                            floatingMenuExpanded = false
+                                            showProblemTab(ProblemArea.WAKE_UP)
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
