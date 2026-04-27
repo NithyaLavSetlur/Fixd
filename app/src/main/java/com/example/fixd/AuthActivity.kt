@@ -62,18 +62,26 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.UserProfileChangeRequest
 
 class AuthActivity : AppCompatActivity() {
+    enum class AuthFlowMode {
+        STANDARD,
+        GOOGLE_USERNAME
+    }
 
     private lateinit var auth: FirebaseAuth
     private var googleSignInClient: GoogleSignInClient? = null
 
+    private var authFlowMode by mutableStateOf(AuthFlowMode.STANDARD)
     private var isSignUpMode by mutableStateOf(false)
     private var isLoading by mutableStateOf(false)
     private var nameInput by mutableStateOf("")
+    private var usernameInput by mutableStateOf("")
     private var emailInput by mutableStateOf("")
     private var passwordInput by mutableStateOf("")
     private var confirmPasswordInput by mutableStateOf("")
     private var verificationMessage by mutableStateOf<String?>(null)
     private var firebaseReady by mutableStateOf(true)
+    private var pendingGoogleProfile by mutableStateOf<UserProfile?>(null)
+    private var pendingGoogleIsNewUser by mutableStateOf(false)
 
     private val googleSignInLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -120,20 +128,24 @@ class AuthActivity : AppCompatActivity() {
         setContent {
             FixdComposeTheme {
                 AuthScreen(
+                    authFlowMode = authFlowMode,
                     isSignUpMode = isSignUpMode,
                     isLoading = isLoading,
                     firebaseReady = firebaseReady,
                     name = nameInput,
+                    username = usernameInput,
                     email = emailInput,
                     password = passwordInput,
                     confirmPassword = confirmPasswordInput,
                     verificationMessage = verificationMessage,
                     palette = ThemePaletteManager.currentPalette(this),
                     onNameChange = { nameInput = it },
+                    onUsernameChange = { usernameInput = it },
                     onEmailChange = { emailInput = it },
                     onPasswordChange = { passwordInput = it },
                     onConfirmPasswordChange = { confirmPasswordInput = it },
                     onPrimaryAction = { if (isSignUpMode) signUp() else signIn() },
+                    onGoogleUsernameSubmit = { completeGoogleUsernameSetup() },
                     onGoogleSignIn = { launchGoogleSignIn() },
                     onToggleMode = {
                         isSignUpMode = !isSignUpMode
@@ -148,43 +160,74 @@ class AuthActivity : AppCompatActivity() {
     }
 
     private fun signIn() {
-        val email = emailInput.trim()
+        val login = emailInput.trim()
         val password = passwordInput.trim()
 
-        if (email.isBlank() || password.isBlank()) {
+        if (login.isBlank() || password.isBlank()) {
             toast(R.string.auth_missing_fields)
             return
         }
 
         updateLoading(true)
-        auth.signInWithEmailAndPassword(email, password)
-            .addOnCompleteListener { task ->
-                updateLoading(false)
-                if (task.isSuccessful) {
-                    val user = auth.currentUser
-                    user?.reload()?.addOnCompleteListener {
-                        if (user?.isEmailVerified == true) {
-                            hideVerificationPrompt()
-                            openDashboard()
+        UserProfileRepository.resolveEmailForLogin(
+            login = login,
+            onSuccess = { resolvedEmail ->
+                if (resolvedEmail.isNullOrBlank()) {
+                    updateLoading(false)
+                    toast(R.string.auth_login_not_found)
+                    return@resolveEmailForLogin
+                }
+                auth.signInWithEmailAndPassword(resolvedEmail, password)
+                    .addOnCompleteListener { task ->
+                        if (task.isSuccessful) {
+                            val user = auth.currentUser
+                            user?.reload()?.addOnCompleteListener {
+                                if (user?.isEmailVerified == true) {
+                                    ensureUsernameForCurrentUser(allowAutoGenerate = true) { success ->
+                                        updateLoading(false)
+                                        if (success) {
+                                            hideVerificationPrompt()
+                                            openDashboard()
+                                        }
+                                    }
+                                } else {
+                                    updateLoading(false)
+                                    auth.signOut()
+                                    showVerificationPrompt(R.string.auth_email_not_verified)
+                                }
+                            }
                         } else {
-                            auth.signOut()
-                            showVerificationPrompt(R.string.auth_email_not_verified)
+                            updateLoading(false)
+                            toast(task.exception?.localizedMessage ?: getString(R.string.firebase_not_ready))
                         }
                     }
-                } else {
-                    toast(task.exception?.localizedMessage ?: getString(R.string.firebase_not_ready))
-                }
+            },
+            onFailure = {
+                updateLoading(false)
+                toast(it.localizedMessage ?: getString(R.string.firebase_not_ready))
             }
+        )
     }
 
     private fun signUp() {
         val name = nameInput.trim()
+        val username = usernameInput.trim()
         val email = emailInput.trim()
         val password = passwordInput.trim()
         val confirmPassword = confirmPasswordInput.trim()
 
         if (name.isBlank()) {
             toast(R.string.profile_name_required)
+            return
+        }
+
+        if (username.isBlank()) {
+            toast(R.string.auth_username_required)
+            return
+        }
+
+        if (!UserProfileRepository.isUsernameValid(username)) {
+            toast(R.string.auth_username_invalid)
             return
         }
 
@@ -202,18 +245,47 @@ class AuthActivity : AppCompatActivity() {
         auth.createUserWithEmailAndPassword(email, password)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
-                    auth.currentUser?.updateProfile(
+                    val createdUser = auth.currentUser
+                    createdUser?.updateProfile(
                         UserProfileChangeRequest.Builder().setDisplayName(name).build()
                     )?.addOnCompleteListener {
-                        auth.currentUser?.sendEmailVerification()?.addOnCompleteListener {
-                            auth.signOut()
+                        val user = auth.currentUser
+                        if (user == null) {
                             updateLoading(false)
-                            isSignUpMode = false
-                            verificationMessage = getString(R.string.auth_email_verification_sent)
-                            emailInput = email
-                            passwordInput = ""
-                            confirmPasswordInput = ""
+                            toast(R.string.firebase_not_ready)
+                            return@addOnCompleteListener
                         }
+                        UserProfileRepository.saveProfileWithUsername(
+                            userId = user.uid,
+                            previousUsername = null,
+                            profile = UserProfile(
+                                preferredName = name,
+                                username = username,
+                                email = email
+                            ),
+                            onSuccess = {
+                                user.sendEmailVerification().addOnCompleteListener {
+                                    auth.signOut()
+                                    updateLoading(false)
+                                    isSignUpMode = false
+                                    verificationMessage = getString(R.string.auth_email_verification_sent)
+                                    usernameInput = username
+                                    emailInput = email
+                                    passwordInput = ""
+                                    confirmPasswordInput = ""
+                                }
+                            },
+                            onFailure = { error ->
+                                user.delete()
+                                auth.signOut()
+                                updateLoading(false)
+                                if (error.message?.contains("already taken") == true) {
+                                    toast(R.string.auth_username_taken)
+                                } else {
+                                    toast(error.localizedMessage ?: getString(R.string.firebase_not_ready))
+                                }
+                            }
+                        )
                     }
                 } else {
                     updateLoading(false)
@@ -255,20 +327,158 @@ class AuthActivity : AppCompatActivity() {
         val credential = GoogleAuthProvider.getCredential(idToken, null)
         auth.signInWithCredential(credential)
             .addOnCompleteListener { task ->
-                updateLoading(false)
                 if (task.isSuccessful) {
                     hideVerificationPrompt()
                     val isNewGoogleUser = task.result?.additionalUserInfo?.isNewUser == true
-                    if (isNewGoogleUser) {
-                        startActivity(NavigationRouter.selectionIntent(this))
-                        finish()
-                    } else {
-                        openDashboard()
-                    }
+                    handleGoogleUserAfterAuth(isNewGoogleUser)
                 } else {
+                    updateLoading(false)
                     toast(task.exception?.localizedMessage ?: getString(R.string.google_sign_in_not_ready))
                 }
             }
+    }
+
+    private fun handleGoogleUserAfterAuth(isNewGoogleUser: Boolean) {
+        val user = auth.currentUser
+        if (user == null) {
+            updateLoading(false)
+            toast(R.string.firebase_not_ready)
+            return
+        }
+        val email = user.email
+        if (email.isNullOrBlank()) {
+            updateLoading(false)
+            toast(R.string.google_sign_in_not_ready)
+            return
+        }
+        UserProfileRepository.getProfile(
+            userId = user.uid,
+            onSuccess = { profile ->
+                val resolvedProfile = (profile ?: UserProfile()).copy(
+                    preferredName = profile?.preferredName?.ifBlank { user.displayName.orEmpty() } ?: user.displayName.orEmpty(),
+                    email = email
+                )
+                if (resolvedProfile.username.isBlank()) {
+                    pendingGoogleProfile = resolvedProfile
+                    pendingGoogleIsNewUser = isNewGoogleUser
+                    nameInput = resolvedProfile.preferredName
+                    usernameInput = ""
+                    emailInput = email
+                    passwordInput = ""
+                    confirmPasswordInput = ""
+                    authFlowMode = AuthFlowMode.GOOGLE_USERNAME
+                    updateLoading(false)
+                } else {
+                    updateLoading(false)
+                    openPostAuthDestination(resolvedProfile, isNewGoogleUser)
+                }
+            },
+            onFailure = {
+                updateLoading(false)
+                toast(it.localizedMessage ?: getString(R.string.firebase_not_ready))
+            }
+        )
+    }
+
+    private fun ensureUsernameForCurrentUser(
+        allowAutoGenerate: Boolean,
+        onComplete: (Boolean) -> Unit
+    ) {
+        val user = auth.currentUser
+        if (user == null) {
+            onComplete(false)
+            return
+        }
+        val email = user.email
+        if (email.isNullOrBlank()) {
+            onComplete(true)
+            return
+        }
+        UserProfileRepository.getProfile(
+            userId = user.uid,
+            onSuccess = { profile ->
+                if (!allowAutoGenerate && (profile?.username.orEmpty().isBlank())) {
+                    onComplete(true)
+                    return@getProfile
+                }
+                UserProfileRepository.ensureUsernameForUser(
+                    userId = user.uid,
+                    email = email,
+                    preferredName = user.displayName.orEmpty(),
+                    currentProfile = profile,
+                    onSuccess = { onComplete(true) },
+                    onFailure = {
+                        toast(it.localizedMessage ?: getString(R.string.firebase_not_ready))
+                        onComplete(false)
+                    }
+                )
+            },
+            onFailure = {
+                toast(it.localizedMessage ?: getString(R.string.firebase_not_ready))
+                onComplete(false)
+            }
+        )
+    }
+
+    private fun completeGoogleUsernameSetup() {
+        val user = auth.currentUser
+        val email = user?.email
+        val baseProfile = pendingGoogleProfile
+        val username = usernameInput.trim()
+
+        if (user == null || email.isNullOrBlank() || baseProfile == null) {
+            toast(R.string.firebase_not_ready)
+            return
+        }
+        if (username.isBlank()) {
+            toast(R.string.auth_username_required)
+            return
+        }
+        if (!UserProfileRepository.isUsernameValid(username)) {
+            toast(R.string.auth_username_invalid)
+            return
+        }
+
+        updateLoading(true)
+        UserProfileRepository.saveProfileWithUsername(
+            userId = user.uid,
+            previousUsername = baseProfile.username.ifBlank { null },
+            profile = baseProfile.copy(
+                preferredName = baseProfile.preferredName.ifBlank { user.displayName.orEmpty() },
+                username = username,
+                email = email
+            ),
+            onSuccess = {
+                val savedProfile = baseProfile.copy(
+                    preferredName = baseProfile.preferredName.ifBlank { user.displayName.orEmpty() },
+                    username = username,
+                    email = email
+                )
+                pendingGoogleProfile = null
+                authFlowMode = AuthFlowMode.STANDARD
+                updateLoading(false)
+                openPostAuthDestination(savedProfile, pendingGoogleIsNewUser)
+            },
+            onFailure = { error ->
+                updateLoading(false)
+                if (error.message?.contains("already taken") == true) {
+                    toast(R.string.auth_username_taken)
+                } else {
+                    toast(error.localizedMessage ?: getString(R.string.firebase_not_ready))
+                }
+            }
+        )
+    }
+
+    private fun openPostAuthDestination(profile: UserProfile, isNewGoogleUser: Boolean) {
+        val needsSelection = isNewGoogleUser || profile.availableProblems.isEmpty() || profile.selectedProblems.isEmpty()
+        if (needsSelection) {
+            startActivity(NavigationRouter.selectionIntent(this))
+        } else {
+            openDashboard()
+            return
+        }
+        finish()
     }
 
     private fun getGoogleWebClientId(): String? {
@@ -279,56 +489,70 @@ class AuthActivity : AppCompatActivity() {
     }
 
     private fun openDashboard() {
-        startActivity(Intent(this, SplashActivity::class.java))
+        startActivity(NavigationRouter.dashboardIntent(this))
         finish()
     }
 
     private fun resendVerificationEmail() {
-        val email = emailInput.trim()
-        if (email.isBlank()) {
+        val login = emailInput.trim()
+        if (login.isBlank()) {
             toast(R.string.auth_missing_fields)
             return
         }
 
         updateLoading(true)
-        auth.fetchSignInMethodsForEmail(email)
-            .addOnCompleteListener { methodsTask ->
-                if (!methodsTask.isSuccessful) {
+        UserProfileRepository.resolveEmailForLogin(
+            login = login,
+            onSuccess = { resolvedEmail ->
+                if (resolvedEmail.isNullOrBlank()) {
                     updateLoading(false)
-                    toast(methodsTask.exception?.localizedMessage ?: getString(R.string.firebase_not_ready))
-                    return@addOnCompleteListener
+                    toast(R.string.auth_login_not_found)
+                    return@resolveEmailForLogin
                 }
-
-                val methods = methodsTask.result?.signInMethods.orEmpty()
-                if (!methods.contains("password")) {
-                    updateLoading(false)
-                    toast(R.string.auth_email_verification_required)
-                    return@addOnCompleteListener
-                }
-
-                val password = passwordInput.trim()
-                if (password.isBlank()) {
-                    updateLoading(false)
-                    toast(R.string.auth_missing_fields)
-                    return@addOnCompleteListener
-                }
-
-                auth.signInWithEmailAndPassword(email, password)
-                    .addOnCompleteListener { signInTask ->
-                        if (!signInTask.isSuccessful) {
+                auth.fetchSignInMethodsForEmail(resolvedEmail)
+                    .addOnCompleteListener { methodsTask ->
+                        if (!methodsTask.isSuccessful) {
                             updateLoading(false)
-                            toast(signInTask.exception?.localizedMessage ?: getString(R.string.firebase_not_ready))
+                            toast(methodsTask.exception?.localizedMessage ?: getString(R.string.firebase_not_ready))
                             return@addOnCompleteListener
                         }
 
-                        val user = auth.currentUser
-                        user?.sendEmailVerification()?.addOnCompleteListener {
-                            auth.signOut()
+                        val methods = methodsTask.result?.signInMethods.orEmpty()
+                        if (!methods.contains("password")) {
                             updateLoading(false)
-                            showVerificationPrompt(R.string.auth_email_verification_sent)
+                            toast(R.string.auth_email_verification_required)
+                            return@addOnCompleteListener
                         }
+
+                        val password = passwordInput.trim()
+                        if (password.isBlank()) {
+                            updateLoading(false)
+                            toast(R.string.auth_missing_fields)
+                            return@addOnCompleteListener
+                        }
+
+                        auth.signInWithEmailAndPassword(resolvedEmail, password)
+                            .addOnCompleteListener { signInTask ->
+                                if (!signInTask.isSuccessful) {
+                                    updateLoading(false)
+                                    toast(signInTask.exception?.localizedMessage ?: getString(R.string.firebase_not_ready))
+                                    return@addOnCompleteListener
+                                }
+
+                                val user = auth.currentUser
+                                user?.sendEmailVerification()?.addOnCompleteListener {
+                                    auth.signOut()
+                                    updateLoading(false)
+                                    showVerificationPrompt(R.string.auth_email_verification_sent)
+                                }
+                            }
                     }
+            },
+            onFailure = {
+                updateLoading(false)
+                toast(it.localizedMessage ?: getString(R.string.firebase_not_ready))
             }
+        )
     }
 
     private fun showVerificationPrompt(messageRes: Int) {
@@ -350,20 +574,24 @@ class AuthActivity : AppCompatActivity() {
 
 @Composable
 private fun AuthScreen(
+    authFlowMode: AuthActivity.AuthFlowMode,
     isSignUpMode: Boolean,
     isLoading: Boolean,
     firebaseReady: Boolean,
     name: String,
+    username: String,
     email: String,
     password: String,
     confirmPassword: String,
     verificationMessage: String?,
     palette: GeneratedPalette,
     onNameChange: (String) -> Unit,
+    onUsernameChange: (String) -> Unit,
     onEmailChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onConfirmPasswordChange: (String) -> Unit,
     onPrimaryAction: () -> Unit,
+    onGoogleUsernameSubmit: () -> Unit,
     onGoogleSignIn: () -> Unit,
     onToggleMode: () -> Unit,
     onResendVerification: () -> Unit
@@ -422,22 +650,36 @@ private fun AuthScreen(
                         Spacer(modifier = Modifier.height(18.dp))
 
                         Text(
-                            text = stringResource(id = R.string.auth_welcome),
+                            text = stringResource(
+                                id = if (authFlowMode == AuthActivity.AuthFlowMode.GOOGLE_USERNAME) {
+                                    R.string.auth_google_username_title
+                                } else {
+                                    R.string.auth_welcome
+                                }
+                            ),
                             style = MaterialTheme.typography.headlineMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Bold
                         )
 
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = stringResource(id = R.string.auth_subtitle),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-
-                        if (isSignUpMode) {
+                        if (authFlowMode == AuthActivity.AuthFlowMode.GOOGLE_USERNAME) {
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Text(
+                                text = stringResource(R.string.auth_google_username_body),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            OutlinedTextField(
+                                value = username,
+                                onValueChange = onUsernameChange,
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text(stringResource(id = R.string.username_label)) },
+                                singleLine = true,
+                                enabled = firebaseReady && !isLoading
+                            )
+                        } else if (isSignUpMode) {
                             Spacer(modifier = Modifier.height(24.dp))
                             OutlinedTextField(
                                 value = name,
@@ -447,61 +689,84 @@ private fun AuthScreen(
                                 singleLine = true,
                                 enabled = firebaseReady && !isLoading
                             )
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-                        OutlinedTextField(
-                            value = email,
-                            onValueChange = onEmailChange,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text(stringResource(id = R.string.email_label)) },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                            enabled = firebaseReady && !isLoading
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-                        OutlinedTextField(
-                            value = password,
-                            onValueChange = onPasswordChange,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text(stringResource(id = R.string.password_label)) },
-                            singleLine = true,
-                            visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                            enabled = firebaseReady && !isLoading
-                        )
-
-                        if (isSignUpMode) {
                             Spacer(modifier = Modifier.height(16.dp))
                             OutlinedTextField(
-                                value = confirmPassword,
-                                onValueChange = onConfirmPasswordChange,
+                                value = username,
+                                onValueChange = onUsernameChange,
                                 modifier = Modifier.fillMaxWidth(),
-                                label = { Text(stringResource(id = R.string.confirm_password_label)) },
+                                label = { Text(stringResource(id = R.string.username_label)) },
+                                singleLine = true,
+                                enabled = firebaseReady && !isLoading
+                            )
+                        }
+
+                        if (authFlowMode != AuthActivity.AuthFlowMode.GOOGLE_USERNAME) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            OutlinedTextField(
+                                value = email,
+                                onValueChange = onEmailChange,
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text(stringResource(id = if (isSignUpMode) R.string.email_label else R.string.email_or_username_label)) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                                enabled = firebaseReady && !isLoading
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+                            OutlinedTextField(
+                                value = password,
+                                onValueChange = onPasswordChange,
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text(stringResource(id = R.string.password_label)) },
                                 singleLine = true,
                                 visualTransformation = PasswordVisualTransformation(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                                 enabled = firebaseReady && !isLoading
                             )
+
+                            if (isSignUpMode) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                OutlinedTextField(
+                                    value = confirmPassword,
+                                    onValueChange = onConfirmPasswordChange,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text(stringResource(id = R.string.confirm_password_label)) },
+                                    singleLine = true,
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                    enabled = firebaseReady && !isLoading
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(24.dp))
                         Button(
-                            onClick = onPrimaryAction,
+                            onClick = if (authFlowMode == AuthActivity.AuthFlowMode.GOOGLE_USERNAME) onGoogleUsernameSubmit else onPrimaryAction,
                             modifier = Modifier.fillMaxWidth(),
                             enabled = firebaseReady && !isLoading
                         ) {
-                            Text(stringResource(id = if (isSignUpMode) R.string.sign_up else R.string.sign_in))
+                            Text(
+                                stringResource(
+                                    id = if (authFlowMode == AuthActivity.AuthFlowMode.GOOGLE_USERNAME) {
+                                        R.string.auth_google_username_continue
+                                    } else if (isSignUpMode) {
+                                        R.string.sign_up
+                                    } else {
+                                        R.string.sign_in
+                                    }
+                                )
+                            )
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedButton(
-                            onClick = onGoogleSignIn,
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = firebaseReady && !isLoading
-                        ) {
-                            Text(stringResource(id = R.string.continue_with_google))
+                        if (authFlowMode != AuthActivity.AuthFlowMode.GOOGLE_USERNAME) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedButton(
+                                onClick = onGoogleSignIn,
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = firebaseReady && !isLoading
+                            ) {
+                                Text(stringResource(id = R.string.continue_with_google))
+                            }
                         }
 
                         if (isLoading) {
@@ -531,16 +796,18 @@ private fun AuthScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
-                        TextButton(
-                            onClick = onToggleMode,
-                            enabled = firebaseReady && !isLoading
-                        ) {
-                            Text(
-                                text = stringResource(
-                                    id = if (isSignUpMode) R.string.switch_to_signin else R.string.switch_to_signup
+                        if (authFlowMode != AuthActivity.AuthFlowMode.GOOGLE_USERNAME) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            TextButton(
+                                onClick = onToggleMode,
+                                enabled = firebaseReady && !isLoading
+                            ) {
+                                Text(
+                                    text = stringResource(
+                                        id = if (isSignUpMode) R.string.switch_to_signin else R.string.switch_to_signup
+                                    )
                                 )
-                            )
+                            }
                         }
                     }
                 }

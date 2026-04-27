@@ -36,7 +36,9 @@ class WakeFollowUpActionReceiver : BroadcastReceiver() {
                         triggerAtMillis = System.currentTimeMillis() + WakeFollowUpScheduler.FOLLOW_UP_DELAY_MS,
                         attempt = WakeFollowUpScheduler.SECOND_FOLLOW_UP_ATTEMPT
                     )
-                    NotificationManagerCompat.from(context).cancel(notificationId(submissionId))
+                    if (NotificationHelper.canPostNotifications(context)) {
+                        NotificationManagerCompat.from(context).cancel(notificationId(submissionId))
+                    }
                     openWakeArea(context)
                     pendingResult.finish()
                 } else {
@@ -75,7 +77,9 @@ class WakeFollowUpActionReceiver : BroadcastReceiver() {
                     WakeSubmissionCache.upsertSubmission(context, cachedSubmission.copy(wakeStatus = wakeStatus))
                     WakeWidgetUpdater.updateAll(context)
                 }
-                NotificationManagerCompat.from(context).cancel(notificationId(submissionId))
+                if (NotificationHelper.canPostNotifications(context)) {
+                    NotificationManagerCompat.from(context).cancel(notificationId(submissionId))
+                }
                 openWakeArea(context)
                 pendingResult.finish()
             },

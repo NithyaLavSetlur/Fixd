@@ -1,12 +1,15 @@
 package com.example.fixd
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.core.graphics.ColorUtils
+import androidx.compose.ui.unit.dp
 
 @Composable
 fun FixdComposeTheme(content: @Composable () -> Unit) {
@@ -47,8 +50,17 @@ fun FixdComposeTheme(content: @Composable () -> Unit) {
         )
     }
 
+    val shapes = Shapes(
+        extraSmall = RoundedCornerShape(14.dp),
+        small = RoundedCornerShape(18.dp),
+        medium = RoundedCornerShape(24.dp),
+        large = RoundedCornerShape(30.dp),
+        extraLarge = RoundedCornerShape(36.dp)
+    )
+
     MaterialTheme(
         colorScheme = scheme,
+        shapes = shapes,
         content = content
     )
 }

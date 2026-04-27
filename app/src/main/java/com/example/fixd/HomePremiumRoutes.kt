@@ -53,14 +53,7 @@ fun HomeRoute(
             .padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
-            Spacer(modifier = Modifier.height(18.dp))
-            Text(
-                text = stringResource(id = R.string.home_page_body),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        item { Spacer(modifier = Modifier.height(18.dp)) }
 
         if (selectedProblems.isEmpty()) {
             item {
@@ -90,7 +83,7 @@ fun HomeRoute(
                 }
             }
         } else {
-            items(selectedProblems) { area ->
+            items(selectedProblems, key = { it.name }) { area ->
                 HomeFocusCard(area = area, onClick = { onOpenArea(area) })
             }
         }
@@ -187,13 +180,6 @@ fun PremiumRoute() {
             )
         }
         item {
-            Text(
-                text = stringResource(R.string.premium_page_body),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
-        item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text(
@@ -205,12 +191,6 @@ fun PremiumRoute() {
                     Text(stringResource(R.string.premium_feature_two), color = MaterialTheme.colorScheme.onSurface)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(stringResource(R.string.premium_feature_three), color = MaterialTheme.colorScheme.onSurface)
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(
-                        text = stringResource(R.string.premium_placeholder_note),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
         }
@@ -230,13 +210,6 @@ fun PremiumRoute() {
             OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.premium_placeholder_secondary))
             }
-            Spacer(modifier = Modifier.height(14.dp))
-            Text(
-                text = if (isPremium) stringResource(R.string.premium_active_summary)
-                else stringResource(R.string.premium_placeholder_body),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }
@@ -271,20 +244,6 @@ fun ProblemAreaPlaceholderRoute(area: ProblemArea) {
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = stringResource(id = area.subtitleRes),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = stringResource(id = R.string.problem_placeholder_body, stringResource(id = area.titleRes)),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(24.dp))
         Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
@@ -358,12 +317,6 @@ fun SocialMediaDistractionRoute() {
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = stringResource(R.string.social_body),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
 
         if (!saveError.isNullOrBlank()) {
@@ -394,12 +347,6 @@ fun SocialMediaDistractionRoute() {
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = stringResource(R.string.social_master_body),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
                         Switch(
                             checked = settings.appControlEnabled,
@@ -423,12 +370,6 @@ fun SocialMediaDistractionRoute() {
                                 )
                             )
                         }
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = stringResource(R.string.social_setup_note),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -480,12 +421,6 @@ fun SocialMediaDistractionRoute() {
                 ) {
                     updateSettings { current -> current.copy(instagramBlockReels = it) }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.social_instagram_messages_body),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
 
@@ -502,12 +437,6 @@ fun SocialMediaDistractionRoute() {
                 ) {
                     updateSettings { current -> current.copy(youtubeBlockShorts = it) }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.social_youtube_future_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
 
@@ -532,18 +461,6 @@ fun SocialMediaDistractionRoute() {
                 ) {
                     Text(stringResource(R.string.social_bubble_open_button))
                 }
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = stringResource(R.string.social_bubble_note),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = stringResource(R.string.social_bubble_steps),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
 
@@ -571,13 +488,7 @@ private fun SocialSettingsCard(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             content()
         }
     }
@@ -601,12 +512,6 @@ private fun SocialSettingRow(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Switch(
