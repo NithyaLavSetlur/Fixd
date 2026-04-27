@@ -2,6 +2,8 @@ package com.example.fixd
 
 data class UserProfile(
     val preferredName: String = "",
+    val username: String = "",
+    val email: String = "",
     val availableProblems: List<String> = emptyList(),
     val selectedProblems: List<String> = emptyList(),
     val isPremium: Boolean = false,

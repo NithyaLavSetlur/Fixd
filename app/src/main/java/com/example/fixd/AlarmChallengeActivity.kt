@@ -501,14 +501,61 @@ class AlarmChallengeActivity : AppCompatActivity() {
         result: WakeValidationResult,
         triggeredAt: Long
     ) {
+        val remoteUploadBytes = imageBytes
+        if (localPath.isNotBlank() && remoteUploadBytes != null) {
+            WakeImageRepository.uploadSubmissionImage(
+                userId = userId,
+                alarmId = intent.getStringExtra(AlarmReceiver.EXTRA_ALARM_ID).orEmpty(),
+                imageBytes = remoteUploadBytes,
+                onSuccess = { remoteUrl ->
+                    saveWakeSubmission(
+                        userId = userId,
+                        text = text,
+                        imagePath = remoteUrl,
+                        result = result,
+                        triggeredAt = triggeredAt
+                    )
+                },
+                onFailure = {
+                    runOnUiThread {
+                        // Keep the submission record in Firestore even if the image upload fails.
+                        saveWakeSubmission(
+                            userId = userId,
+                            text = text,
+                            imagePath = "",
+                            result = result,
+                            triggeredAt = triggeredAt
+                        )
+                    }
+                }
+            )
+            return
+        }
+
+        saveWakeSubmission(
+            userId = userId,
+            text = text,
+            imagePath = if (localPath.isBlank()) "" else localPath,
+            result = result,
+            triggeredAt = triggeredAt
+        )
+    }
+
+    private fun saveWakeSubmission(
+        userId: String,
+        text: String,
+        imagePath: String,
+        result: WakeValidationResult,
+        triggeredAt: Long
+    ) {
         val completedAt = System.currentTimeMillis()
         AlarmRepository.saveSubmission(
             userId = userId,
             submission = WakeSubmission(
                 alarmId = intent.getStringExtra(AlarmReceiver.EXTRA_ALARM_ID).orEmpty(),
-                type = if (localPath.isBlank()) "text" else "image",
+                type = if (imagePath.isBlank()) "text" else "image",
                 text = text,
-                imagePath = localPath,
+                imagePath = imagePath,
                 verdict = if (result.passed) "passed" else "retry",
                 feedback = result.feedback,
                 alarmHour = intent.getIntExtra(AlarmReceiver.EXTRA_ALARM_HOUR, 0),

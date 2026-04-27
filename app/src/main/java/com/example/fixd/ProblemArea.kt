@@ -51,6 +51,13 @@ enum class ProblemArea(
         R.string.problem_breathe_subtitle,
         R.drawable.ic_tab_breathe
     ),
+    COUNTDOWN(
+        R.id.tab_countdown,
+        R.string.problem_countdown,
+        R.string.problem_countdown_subtitle,
+        R.drawable.ic_tab_countdown,
+        hasLiveScreen = true
+    ),
     CHALLENGES(
         R.id.tab_challenges,
         R.string.problem_challenges,

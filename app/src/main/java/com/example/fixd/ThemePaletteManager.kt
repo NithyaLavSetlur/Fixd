@@ -164,14 +164,6 @@ object ThemePaletteManager {
             val horizontalInset = (24 * context.resources.displayMetrics.density).toInt()
             val maxWidth = (context.resources.displayMetrics.widthPixels - (horizontalInset * 2)).coerceAtLeast(0)
             window.setLayout(maxWidth, WindowManager.LayoutParams.WRAP_CONTENT)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                window.attributes = window.attributes.apply {
-                    blurBehindRadius = (18 * context.resources.displayMetrics.density).toInt()
-                }
-                window.setBackgroundBlurRadius((28 * context.resources.displayMetrics.density).toInt())
-                window.setDimAmount(0.56f)
-            }
         }
         applyToView(dialog.window?.decorView, palette)
         dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.let { applyDialogButton(it, palette, filled = true) }

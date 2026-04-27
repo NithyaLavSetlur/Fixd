@@ -14,6 +14,9 @@ class BootReceiver : BroadcastReceiver() {
         LocalAlarmCache.getAlarms(context)
             .filter { it.enabled }
             .forEach { AlarmScheduler.schedule(context, it) }
+        CountdownLocalCache.getCountdowns(context)
+            .filter { it.notifyAt > System.currentTimeMillis() }
+            .forEach { CountdownReminderScheduler.schedule(context, it) }
         WakeWidgetUpdater.updateAll(context)
     }
 }

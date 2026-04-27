@@ -13,6 +13,9 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -96,6 +99,11 @@
             android:exported="false" />
 
         <receiver
+            android:name=".CountdownReminderReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <receiver
             android:name=".WakeStreakWidgetProvider"
             android:exported="false">
             <intent-filter>
@@ -105,6 +113,54 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/wake_streak_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".ChallengeWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/challenge_board_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".ChallengeFigureWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/challenge_figures_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".ChallengeBadgeWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/challenge_badges_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".CountdownWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/countdown_widget_info" />
         </receiver>
 
         <receiver

@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -51,6 +50,7 @@ fun ProfileRoute(
     val auth = remember { FirebaseAuth.getInstance() }
     var currentProfile by remember { mutableStateOf(UserProfile()) }
     var displayName by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
     var emailSummary by remember { mutableStateOf("") }
     var verificationStatus by remember { mutableStateOf("") }
     var isGoogleUser by remember { mutableStateOf(false) }
@@ -78,6 +78,7 @@ fun ProfileRoute(
             onSuccess = { profile ->
                 currentProfile = profile
                 displayName = profile.preferredName.ifBlank { user.displayName.orEmpty() }
+                username = profile.username
                 syncProfileSelections(profile, availableProblemsState, selectedProblemsState)
                 focusBodyText = context.getString(
                     if (profile.isPremium) R.string.profile_tab_display_body_premium
@@ -87,6 +88,7 @@ fun ProfileRoute(
             onFailure = {
                 currentProfile = UserProfile()
                 displayName = user.displayName.orEmpty()
+                username = ""
                 syncProfileSelections(currentProfile, availableProblemsState, selectedProblemsState)
                 focusBodyText = context.getString(R.string.profile_tab_display_body_free)
                 toast(context, it.localizedMessage ?: context.getString(R.string.firebase_not_ready))
@@ -119,24 +121,48 @@ fun ProfileRoute(
         selectedProblemsState.addAll(selected)
     }
 
-    fun saveName(userId: String) {
+    fun saveIdentity(userId: String) {
         val user = auth.currentUser ?: return
         val newDisplayName = displayName.trim()
+        val newUsername = username.trim()
         if (newDisplayName.isBlank()) {
             toast(context, context.getString(R.string.profile_name_required))
             return
         }
+        if (newUsername.isBlank()) {
+            toast(context, context.getString(R.string.profile_username_required))
+            return
+        }
+        if (!UserProfileRepository.isUsernameValid(newUsername)) {
+            toast(context, context.getString(R.string.profile_username_invalid))
+            return
+        }
         user.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(newDisplayName).build())
             .addOnSuccessListener {
-                UserProfileRepository.saveProfile(
+                UserProfileRepository.saveProfileWithUsername(
                     userId = userId,
-                    profile = currentProfile.copy(preferredName = newDisplayName),
+                    previousUsername = currentProfile.username,
+                    profile = currentProfile.copy(
+                        preferredName = newDisplayName,
+                        username = newUsername,
+                        email = user.email.orEmpty()
+                    ),
                     onSuccess = {
-                        currentProfile = currentProfile.copy(preferredName = newDisplayName)
-                        toast(context, context.getString(R.string.profile_name_saved))
+                        currentProfile = currentProfile.copy(
+                            preferredName = newDisplayName,
+                            username = newUsername,
+                            email = user.email.orEmpty()
+                        )
+                        toast(context, context.getString(R.string.profile_identity_saved))
                         onProfileUpdated()
                     },
-                    onFailure = { toast(context, it.localizedMessage ?: context.getString(R.string.firebase_not_ready)) }
+                    onFailure = {
+                        if (it.message?.contains("already taken") == true) {
+                            toast(context, context.getString(R.string.auth_username_taken))
+                        } else {
+                            toast(context, it.localizedMessage ?: context.getString(R.string.firebase_not_ready))
+                        }
+                    }
                 )
             }
             .addOnFailureListener { toast(context, it.localizedMessage ?: context.getString(R.string.firebase_not_ready)) }
@@ -167,6 +193,8 @@ fun ProfileRoute(
             onSuccess = {
                 currentProfile = currentProfile.copy(
                     preferredName = sanitizedDisplayName,
+                    username = currentProfile.username,
+                    email = user.email.orEmpty(),
                     availableProblems = availableProblems,
                     selectedProblems = tabBarProblems
                 )
@@ -258,8 +286,16 @@ fun ProfileRoute(
                     singleLine = true
                 )
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedButton(onClick = { saveName(userId) }, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(id = R.string.profile_save_name))
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(id = R.string.profile_username_label)) },
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedButton(onClick = { saveIdentity(userId) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(id = R.string.profile_save_identity))
                 }
                 Spacer(modifier = Modifier.height(14.dp))
                 Text(
@@ -290,12 +326,6 @@ fun ProfileRoute(
         }
         item {
             ProfileCard(title = stringResource(id = R.string.profile_focus_title)) {
-                Text(
-                    text = focusBodyText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(12.dp))
                 ProblemArea.entries.forEach { area ->
                     val enabled = currentProfile.isPremium || area in availableProblemsState
                     val checked = area in selectedProblemsState
@@ -340,7 +370,7 @@ fun ProfileRoute(
         ProfileCredentialDialog(
             title = stringResource(id = R.string.profile_change_email_title),
             secondaryLabel = stringResource(id = R.string.profile_new_email),
-            confirmLabel = stringResource(id = R.string.profile_update_action),
+            confirmLabel = stringResource(id = R.string.profile_save_changes),
             onDismiss = { showChangeEmailDialog = false },
             onConfirm = { currentPassword, newValue ->
                 val user = auth.currentUser ?: return@ProfileCredentialDialog
@@ -352,7 +382,7 @@ fun ProfileRoute(
         ProfileCredentialDialog(
             title = stringResource(id = R.string.profile_change_password_title),
             secondaryLabel = stringResource(id = R.string.profile_new_password),
-            confirmLabel = stringResource(id = R.string.profile_update_action),
+            confirmLabel = stringResource(id = R.string.profile_save_changes),
             isPasswordDialog = true,
             onDismiss = { showChangePasswordDialog = false },
             onConfirm = { currentPassword, newValue ->
@@ -428,42 +458,40 @@ private fun ProfileCredentialDialog(
 ) {
     var currentPassword by remember { mutableStateOf("") }
     var newValue by remember { mutableStateOf("") }
+    val canSave = currentPassword.trim().isNotBlank() && newValue.trim().isNotBlank()
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = currentPassword,
-                    onValueChange = { currentPassword = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(stringResource(id = R.string.profile_current_password)) },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = newValue,
-                    onValueChange = { newValue = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(secondaryLabel) },
-                    visualTransformation = if (isPasswordDialog) PasswordVisualTransformation() else VisualTransformation.None,
-                    singleLine = true
-                )
-            }
-        },
+    FixdDialog(
+        title = title,
+        onDismiss = onDismiss,
         confirmButton = {
-            Button(onClick = { onConfirm(currentPassword.trim(), newValue.trim()) }) {
+            Button(
+                enabled = canSave,
+                onClick = { onConfirm(currentPassword.trim(), newValue.trim()) }
+            ) {
                 Text(confirmLabel)
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(id = android.R.string.cancel))
-            }
         }
-    )
+    ) {
+        Column {
+            OutlinedTextField(
+                value = currentPassword,
+                onValueChange = { currentPassword = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(id = R.string.profile_current_password)) },
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = newValue,
+                onValueChange = { newValue = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(secondaryLabel) },
+                visualTransformation = if (isPasswordDialog) PasswordVisualTransformation() else VisualTransformation.None,
+                singleLine = true
+            )
+        }
+    }
 }
 
 private fun toast(context: Context, message: String) {

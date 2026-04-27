@@ -235,14 +235,7 @@ fun WakeRoute(
             .padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
-            Spacer(modifier = Modifier.height(18.dp))
-            Text(
-                text = stringResource(R.string.wake_intro),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        item { Spacer(modifier = Modifier.height(18.dp)) }
         item {
             WakeSectionCard(stringResource(R.string.wake_streak_title), stringResource(R.string.wake_streak_subtitle)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -276,10 +269,7 @@ fun WakeRoute(
             }
         }
         item {
-            WakeSectionCard(
-                stringResource(R.string.wake_create_alarm),
-                stringResource(if (exactAlarmEnabled) R.string.wake_intro else R.string.wake_exact_alarm_disabled)
-            ) {
+            WakeSectionCard(stringResource(R.string.wake_create_alarm), "") {
                 Button(
                     onClick = {
                         if (!canScheduleExactAlarms(context)) {
@@ -500,12 +490,6 @@ fun WakeHistoryRoute() {
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = stringResource(R.string.wake_history_full_body),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
         item {
             WakeHistoryFilter("Type", typeOptions, typeFilter) { typeFilter = it }
@@ -574,9 +558,7 @@ private fun WakeSectionCard(
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             content()
         }
     }

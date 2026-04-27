@@ -168,14 +168,7 @@ fun SettingsRoute(
             .padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        item {
-            Spacer(modifier = Modifier.height(18.dp))
-            Text(
-                text = stringResource(id = R.string.settings_page_body),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        item { Spacer(modifier = Modifier.height(18.dp)) }
         item {
             SettingsCard(stringResource(R.string.settings_theme_title), stringResource(R.string.settings_theme_body)) {
                 SettingsThemeOption(stringResource(R.string.settings_theme_system), themeMode == UserPreferences.THEME_SYSTEM) {
@@ -309,9 +302,7 @@ private fun SettingsCard(
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(text = title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(text = body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             content()
         }
     }

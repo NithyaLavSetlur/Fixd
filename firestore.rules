@@ -1,0 +1,61 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    match /usernameIndex/{username} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.usernameLower == username;
+      allow update: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.usernameLower == username;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    match /challengeFriendGroups/{groupId} {
+      allow create: if signedIn()
+        && request.resource.data.createdByUid == request.auth.uid;
+      allow read: if signedIn()
+        && resource.data.memberUids is list
+        && resource.data.memberUids.hasAny([request.auth.uid]);
+      allow update, delete: if signedIn() && resource.data.createdByUid == request.auth.uid;
+    }
+
+    match /challengeFriendRequests/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.memberUids is list
+        && request.resource.data.memberUids.hasAny([request.auth.uid]);
+      allow read: if signedIn()
+        && resource.data.memberUids is list
+        && resource.data.memberUids.hasAny([request.auth.uid]);
+      allow update, delete: if signedIn()
+        && resource.data.memberUids is list
+        && resource.data.memberUids.hasAny([request.auth.uid]);
+    }
+
+    match /userPublicProfiles/{userId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isOwner(userId);
+    }
+
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      match /{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+  }
+}

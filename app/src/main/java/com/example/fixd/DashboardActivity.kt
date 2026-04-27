@@ -4,18 +4,30 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.border
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
@@ -33,6 +45,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -47,6 +60,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -77,7 +92,38 @@ class DashboardActivity : AppCompatActivity() {
         data object Settings : DashboardScreen
         data object Premium : DashboardScreen
         data class Problem(val area: ProblemArea) : DashboardScreen
+        data class Challenges(val page: ChallengePage) : DashboardScreen
         data object WakeHistory : DashboardScreen
+    }
+
+    private enum class SavedDestination(val prefix: String) {
+        HOME("home"),
+        PROFILE("profile"),
+        SETTINGS("settings"),
+        PREMIUM("premium"),
+        PROBLEM("problem:"),
+        CHALLENGES("challenges:"),
+        WAKE_HISTORY("wake_history");
+
+        companion object {
+            fun fromValue(value: String): SavedDestination? = entries.firstOrNull { destination ->
+                if (destination == HOME || destination == PROFILE || destination == SETTINGS || destination == PREMIUM || destination == WAKE_HISTORY) {
+                    value == destination.prefix
+                } else {
+                    value.startsWith(destination.prefix)
+                }
+            }
+        }
+    }
+
+    private fun dashboardScreenKey(screen: DashboardScreen): String = when (screen) {
+        DashboardScreen.Home -> "home"
+        DashboardScreen.Profile -> "profile"
+        DashboardScreen.Settings -> "settings"
+        DashboardScreen.Premium -> "premium"
+        is DashboardScreen.Problem -> "problem_${screen.area.name}"
+        is DashboardScreen.Challenges -> "challenge_${screen.page.name}"
+        DashboardScreen.WakeHistory -> "wake_history"
     }
 
     private lateinit var auth: FirebaseAuth
@@ -178,11 +224,25 @@ class DashboardActivity : AppCompatActivity() {
     }
 
     private fun showProblemTab(area: ProblemArea) {
+        if (area == ProblemArea.CHALLENGES) {
+            showChallengesPage(ChallengePage.BOARD)
+            return
+        }
         currentScreen = DashboardScreen.Problem(area)
         activeDrawerItemId = 0
         selectedBottomNavItemId = area.menuItemId
         screenTitle = getString(area.titleRes)
         floatingMenuExpanded = false
+        persistCurrentDestination()
+    }
+
+    private fun showChallengesPage(page: ChallengePage) {
+        currentScreen = DashboardScreen.Challenges(page)
+        activeDrawerItemId = 0
+        selectedBottomNavItemId = ProblemArea.CHALLENGES.menuItemId
+        screenTitle = getString(ProblemArea.CHALLENGES.titleRes)
+        floatingMenuExpanded = false
+        persistCurrentDestination()
     }
 
     private fun showHomePage() {
@@ -191,6 +251,7 @@ class DashboardActivity : AppCompatActivity() {
         selectedBottomNavItemId = null
         screenTitle = getString(R.string.home_page_title)
         floatingMenuExpanded = false
+        persistCurrentDestination()
     }
 
     private fun showProfilePage() {
@@ -199,6 +260,7 @@ class DashboardActivity : AppCompatActivity() {
         selectedBottomNavItemId = null
         screenTitle = getString(R.string.profile_page_title)
         floatingMenuExpanded = false
+        persistCurrentDestination()
     }
 
     private fun showSettingsPage() {
@@ -207,6 +269,7 @@ class DashboardActivity : AppCompatActivity() {
         selectedBottomNavItemId = null
         screenTitle = getString(R.string.settings_page_title)
         floatingMenuExpanded = false
+        persistCurrentDestination()
     }
 
     private fun showPremiumPage() {
@@ -215,6 +278,7 @@ class DashboardActivity : AppCompatActivity() {
         selectedBottomNavItemId = null
         screenTitle = getString(R.string.premium_page_title)
         floatingMenuExpanded = false
+        persistCurrentDestination()
     }
 
     private fun showWakeHistoryPage() {
@@ -223,6 +287,7 @@ class DashboardActivity : AppCompatActivity() {
         selectedBottomNavItemId = ProblemArea.WAKE_UP.menuItemId
         screenTitle = getString(R.string.wake_history_full_title)
         floatingMenuExpanded = false
+        persistCurrentDestination()
     }
 
     private fun handleDrawerDestination(itemId: Int) {
@@ -251,10 +316,62 @@ class DashboardActivity : AppCompatActivity() {
         pendingOpenAction = intent.getStringExtra(EXTRA_OPEN_ACTION)
         val requestedArea = ProblemArea.fromName(intent.getStringExtra(EXTRA_OPEN_AREA).orEmpty())
         if (requestedArea != null && selectedProblems.contains(requestedArea)) {
-            showProblemTab(requestedArea)
+            if (requestedArea == ProblemArea.CHALLENGES) {
+                val requestedChallengePage = runCatching {
+                    ChallengePage.valueOf(intent.getStringExtra(EXTRA_OPEN_CHALLENGE_PAGE).orEmpty())
+                }.getOrNull() ?: ChallengePage.BOARD
+                showChallengesPage(requestedChallengePage)
+            } else {
+                showProblemTab(requestedArea)
+            }
         } else {
-            showHomePage()
+            restoreLastDestinationOrDefault()
         }
+    }
+
+    private fun restoreLastDestinationOrDefault() {
+        val userId = auth.currentUser?.uid
+        val saved = userId?.let { UserPreferences.getLastDestination(this, it) }
+        when (SavedDestination.fromValue(saved.orEmpty())) {
+            SavedDestination.HOME -> showHomePage()
+            SavedDestination.PROFILE -> showProfilePage()
+            SavedDestination.SETTINGS -> showSettingsPage()
+            SavedDestination.PREMIUM -> showPremiumPage()
+            SavedDestination.WAKE_HISTORY -> showWakeHistoryPage()
+            SavedDestination.PROBLEM -> {
+                val areaName = saved?.removePrefix(SavedDestination.PROBLEM.prefix).orEmpty()
+                val area = ProblemArea.fromName(areaName)
+                if (area != null && selectedProblems.contains(area)) {
+                    showProblemTab(area)
+                } else {
+                    showHomePage()
+                }
+            }
+            SavedDestination.CHALLENGES -> {
+                val pageName = saved?.removePrefix(SavedDestination.CHALLENGES.prefix).orEmpty()
+                val page = runCatching { ChallengePage.valueOf(pageName) }.getOrNull()
+                if (selectedProblems.contains(ProblemArea.CHALLENGES) && page != null) {
+                    showChallengesPage(page)
+                } else {
+                    showHomePage()
+                }
+            }
+            null -> showHomePage()
+        }
+    }
+
+    private fun persistCurrentDestination() {
+        val userId = auth.currentUser?.uid ?: return
+        val value = when (val screen = currentScreen) {
+            DashboardScreen.Home -> SavedDestination.HOME.prefix
+            DashboardScreen.Profile -> SavedDestination.PROFILE.prefix
+            DashboardScreen.Settings -> SavedDestination.SETTINGS.prefix
+            DashboardScreen.Premium -> SavedDestination.PREMIUM.prefix
+            is DashboardScreen.Problem -> SavedDestination.PROBLEM.prefix + screen.area.name
+            is DashboardScreen.Challenges -> SavedDestination.CHALLENGES.prefix + screen.page.name
+            DashboardScreen.WakeHistory -> SavedDestination.WAKE_HISTORY.prefix
+        }
+        UserPreferences.saveLastDestination(this, userId, value)
     }
 
     private fun consumePendingOpenAction(expectedAction: String): Boolean {
@@ -278,13 +395,19 @@ class DashboardActivity : AppCompatActivity() {
         val drawerState = androidx.compose.material3.rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
         val scope = rememberCoroutineScope()
         val currentProblemArea = (currentScreen as? DashboardScreen.Problem)?.area
-        val isProblemContext = currentProblemArea != null || currentScreen == DashboardScreen.WakeHistory
-        val hasFloatingTabMenu = currentProblemArea == ProblemArea.WAKE_UP || currentScreen == DashboardScreen.WakeHistory
+        val currentChallengePage = (currentScreen as? DashboardScreen.Challenges)?.page
+        val isProblemContext = currentProblemArea != null || currentScreen == DashboardScreen.WakeHistory || currentChallengePage != null
+        val hasFloatingTabMenu =
+            currentProblemArea == ProblemArea.WAKE_UP ||
+                currentScreen == DashboardScreen.WakeHistory ||
+                currentChallengePage != null
         val density = LocalDensity.current
         val bubbleSize = 58.dp
         val bubblePadding = 16.dp
+        val bubbleDefaultTopOffset = 94.dp
         val bubbleSizePx = with(density) { bubbleSize.toPx() }
         val bubblePaddingPx = with(density) { bubblePadding.toPx() }
+        val bubbleDefaultTopOffsetPx = with(density) { bubbleDefaultTopOffset.toPx() }
         var viewportSize by remember { mutableStateOf(IntSize.Zero) }
         var bubbleOffset by remember { mutableStateOf(Offset.Unspecified) }
         var bubbleIsDragging by remember { mutableStateOf(false) }
@@ -298,6 +421,39 @@ class DashboardActivity : AppCompatActivity() {
             animationSpec = spring(dampingRatio = 0.9f, stiffness = 640f),
             label = "tab_bubble_y"
         )
+        val bubbleScale by animateFloatAsState(
+            targetValue = when {
+                bubbleIsDragging -> 0.96f
+                floatingMenuExpanded -> 1.07f
+                else -> 1f
+            },
+            animationSpec = spring(dampingRatio = 0.74f, stiffness = 500f),
+            label = "tab_bubble_scale"
+        )
+        val bubbleIconRotation by animateFloatAsState(
+            targetValue = if (floatingMenuExpanded) 90f else 0f,
+            animationSpec = spring(dampingRatio = 0.8f, stiffness = 560f),
+            label = "tab_bubble_rotation"
+        )
+        val bubbleElevation by animateDpAsState(
+            targetValue = if (floatingMenuExpanded) 16.dp else 10.dp,
+            label = "tab_bubble_elevation"
+        )
+        var refreshTick by remember { mutableIntStateOf(0) }
+        var refreshing by remember { mutableStateOf(false) }
+
+        fun refreshCurrentScreen() {
+            refreshing = true
+            auth.currentUser?.reload()?.addOnCompleteListener {
+                loadProfile()
+                refreshTick += 1
+                refreshing = false
+            } ?: run {
+                loadProfile()
+                refreshTick += 1
+                refreshing = false
+            }
+        }
 
         fun clampBubbleOffset(offset: Offset): Offset {
             if (viewportSize == IntSize.Zero) return offset
@@ -326,7 +482,7 @@ class DashboardActivity : AppCompatActivity() {
                     snapBubbleToSide(
                         Offset(
                             x = viewportSize.width.toFloat() - bubbleSizePx - bubblePaddingPx,
-                            y = bubblePaddingPx
+                            y = bubblePaddingPx + bubbleDefaultTopOffsetPx
                         )
                     )
                 } else {
@@ -340,21 +496,24 @@ class DashboardActivity : AppCompatActivity() {
             gesturesEnabled = false,
             drawerContent = {
                 ModalDrawerSheet(
+                    modifier = Modifier.width(272.dp),
                     drawerContainerColor = MaterialTheme.colorScheme.surface,
                     drawerContentColor = MaterialTheme.colorScheme.onSurface
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 24.dp)) {
-                        Text(
-                            text = stringResource(id = R.string.drawer_header_title),
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = stringResource(id = R.string.drawer_header_subtitle),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Image(
+                                painter = painterResource(id = R.drawable.ic_fixd_panda_logo_monochrome),
+                                contentDescription = null,
+                                modifier = Modifier.size(34.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = stringResource(id = R.string.drawer_header_title),
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                         Spacer(modifier = Modifier.height(18.dp))
                         DrawerDestination.entries.forEach { destination ->
                             NavigationDrawerItem(
@@ -381,6 +540,12 @@ class DashboardActivity : AppCompatActivity() {
                     containerColor = MaterialTheme.colorScheme.background,
                     topBar = {
                         TopAppBar(
+                            modifier = Modifier.clip(
+                                androidx.compose.foundation.shape.RoundedCornerShape(
+                                    bottomStart = 24.dp,
+                                    bottomEnd = 24.dp
+                                )
+                            ),
                             title = { Text(screenTitle.ifBlank { stringResource(id = R.string.dashboard_title) }) },
                             navigationIcon = {
                                 if (isProblemContext) {
@@ -402,7 +567,12 @@ class DashboardActivity : AppCompatActivity() {
                     },
                     bottomBar = {
                         if (selectedProblems.isNotEmpty()) {
-                            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                            NavigationBar(
+                                modifier = Modifier
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ) {
                                 selectedProblems.forEach { area ->
                                     NavigationBarItem(
                                         selected = selectedBottomNavItemId == area.menuItemId,
@@ -410,10 +580,12 @@ class DashboardActivity : AppCompatActivity() {
                                         icon = {
                                             Icon(
                                                 painter = painterResource(id = area.iconRes),
-                                                contentDescription = stringResource(id = area.titleRes)
+                                                contentDescription = stringResource(id = area.titleRes),
+                                                modifier = Modifier.size(30.dp)
                                             )
                                         },
-                                        label = { Text(stringResource(id = area.titleRes)) }
+                                        label = null,
+                                        alwaysShowLabel = false
                                     )
                                 }
                             }
@@ -432,52 +604,67 @@ class DashboardActivity : AppCompatActivity() {
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = stringResource(id = R.string.dashboard_body),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                         Spacer(modifier = Modifier.height(18.dp))
-                        Card(
-                            modifier = Modifier.fillMaxSize(),
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp))
+                                .animateContentSize(),
                         ) {
-                            when (val screen = currentScreen) {
-                                DashboardScreen.Home -> HomeRoute(
-                                    selectedProblems = selectedProblems,
-                                    onOpenArea = { showProblemTab(it) },
-                                    onOpenTabDisplayChooser = { showProfilePage() }
-                                )
-                                DashboardScreen.Profile -> ProfileRoute(
-                                    onProfileUpdated = {
-                                        auth.currentUser?.reload()?.addOnCompleteListener {
-                                            loadProfile()
-                                            showProfilePage()
+                            PullToRefreshBox(
+                                isRefreshing = refreshing,
+                                onRefresh = { refreshCurrentScreen() },
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                AnimatedContent(
+                                    targetState = currentScreen to refreshTick,
+                                    contentKey = { dashboardScreenKey(it.first) + "_${it.second}" },
+                                    transitionSpec = {
+                                        (fadeIn() + slideInVertically(initialOffsetY = { it / 12 })) togetherWith
+                                            (fadeOut() + slideOutVertically(targetOffsetY = { -it / 18 }))
+                                    },
+                                    label = "dashboard_screen_transition"
+                                ) { (screen, _) ->
+                                    when (screen) {
+                                        DashboardScreen.Home -> HomeRoute(
+                                            selectedProblems = selectedProblems,
+                                            onOpenArea = { showProblemTab(it) },
+                                            onOpenTabDisplayChooser = { showProfilePage() }
+                                        )
+                                        DashboardScreen.Profile -> ProfileRoute(
+                                            onProfileUpdated = {
+                                                auth.currentUser?.reload()?.addOnCompleteListener {
+                                                    loadProfile()
+                                                    showProfilePage()
+                                                }
+                                            }
+                                        )
+                                        DashboardScreen.Settings -> SettingsRoute(
+                                            onTabOrderSaved = {
+                                                loadProfile()
+                                                showSettingsPage()
+                                            }
+                                        )
+                                        DashboardScreen.Premium -> PremiumRoute()
+                                        is DashboardScreen.Problem -> {
+                                            when (screen.area) {
+                                                ProblemArea.WAKE_UP -> WakeRoute(
+                                                    pendingCreateAlarm = pendingOpenAction == OPEN_ACTION_CREATE_ALARM,
+                                                    onCreateAlarmConsumed = { consumePendingOpenAction(OPEN_ACTION_CREATE_ALARM) },
+                                                    onShowFullHistory = { showWakeHistoryPage() }
+                                                )
+                                                ProblemArea.COUNTDOWN -> CountdownRoute()
+                                                ProblemArea.SOCIAL_MEDIA_DISTRACTION -> SocialMediaDistractionRoute()
+                                                else -> ProblemAreaPlaceholderRoute(screen.area)
+                                            }
                                         }
+                                        is DashboardScreen.Challenges -> ChallengesRoute(
+                                            page = screen.page,
+                                            onNavigateToPage = { showChallengesPage(it) }
+                                        )
+                                        DashboardScreen.WakeHistory -> WakeHistoryRoute()
                                     }
-                                )
-                                DashboardScreen.Settings -> SettingsRoute(
-                                    onTabOrderSaved = {
-                                        loadProfile()
-                                        showSettingsPage()
-                                    }
-                                )
-                            DashboardScreen.Premium -> PremiumRoute()
-                            is DashboardScreen.Problem -> {
-                                when (screen.area) {
-                                    ProblemArea.WAKE_UP -> WakeRoute(
-                                        pendingCreateAlarm = pendingOpenAction == OPEN_ACTION_CREATE_ALARM,
-                                        onCreateAlarmConsumed = { consumePendingOpenAction(OPEN_ACTION_CREATE_ALARM) },
-                                        onShowFullHistory = { showWakeHistoryPage() }
-                                    )
-                                    ProblemArea.SOCIAL_MEDIA_DISTRACTION -> SocialMediaDistractionRoute()
-                                    else -> ProblemAreaPlaceholderRoute(screen.area)
                                 }
-                            }
-                                DashboardScreen.WakeHistory -> WakeHistoryRoute()
                             }
                         }
                     }
@@ -494,39 +681,49 @@ class DashboardActivity : AppCompatActivity() {
                         }
                     ) {
                         Card(
-                            modifier = Modifier.pointerInput(viewportSize, isProblemContext) {
-                                detectDragGestures(
-                                    onDragStart = {
-                                        floatingMenuExpanded = false
-                                        bubbleIsDragging = true
-                                    },
-                                    onDrag = { change, dragAmount ->
-                                        change.consume()
-                                        val currentOffset = if (bubbleOffset == Offset.Unspecified) {
-                                            Offset(bubblePaddingPx, bubblePaddingPx)
-                                        } else {
-                                            bubbleOffset
-                                        }
-                                        bubbleOffset = clampBubbleOffset(
-                                            Offset(
-                                                x = currentOffset.x + dragAmount.x,
-                                                y = currentOffset.y + dragAmount.y
-                                            )
-                                        )
-                                    },
-                                    onDragEnd = {
-                                        bubbleIsDragging = false
-                                        bubbleOffset = snapBubbleToSide(bubbleOffset)
-                                    },
-                                    onDragCancel = {
-                                        bubbleIsDragging = false
-                                        bubbleOffset = snapBubbleToSide(bubbleOffset)
-                                    }
+                            modifier = Modifier
+                                .graphicsLayer {
+                                    scaleX = bubbleScale
+                                    scaleY = bubbleScale
+                                }
+                                .border(
+                                    width = 2.dp,
+                                    color = MaterialTheme.colorScheme.surface,
+                                    shape = androidx.compose.foundation.shape.CircleShape
                                 )
-                            },
+                                .pointerInput(viewportSize, isProblemContext) {
+                                    detectDragGestures(
+                                        onDragStart = {
+                                            floatingMenuExpanded = false
+                                            bubbleIsDragging = true
+                                        },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            val currentOffset = if (bubbleOffset == Offset.Unspecified) {
+                                                Offset(bubblePaddingPx, bubblePaddingPx)
+                                            } else {
+                                                bubbleOffset
+                                            }
+                                            bubbleOffset = clampBubbleOffset(
+                                                Offset(
+                                                    x = currentOffset.x + dragAmount.x,
+                                                    y = currentOffset.y + dragAmount.y
+                                                )
+                                            )
+                                        },
+                                        onDragEnd = {
+                                            bubbleIsDragging = false
+                                            bubbleOffset = snapBubbleToSide(bubbleOffset)
+                                        },
+                                        onDragCancel = {
+                                            bubbleIsDragging = false
+                                            bubbleOffset = snapBubbleToSide(bubbleOffset)
+                                        }
+                                    )
+                                },
                             shape = androidx.compose.foundation.shape.CircleShape,
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+                            elevation = CardDefaults.cardElevation(defaultElevation = bubbleElevation)
                         ) {
                             IconButton(
                                 onClick = { floatingMenuExpanded = !floatingMenuExpanded },
@@ -535,7 +732,10 @@ class DashboardActivity : AppCompatActivity() {
                                 Icon(
                                     Icons.Outlined.Menu,
                                     contentDescription = stringResource(id = R.string.menu_open),
-                                    tint = MaterialTheme.colorScheme.onPrimary
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.graphicsLayer {
+                                        rotationZ = bubbleIconRotation
+                                    }
                                 )
                             }
                         }
@@ -563,6 +763,25 @@ class DashboardActivity : AppCompatActivity() {
                                         }
                                     )
                                 }
+                                currentChallengePage != null -> {
+                                    listOf(
+                                        ChallengePage.BOARD,
+                                        ChallengePage.MANAGE,
+                                        ChallengePage.HISTORY,
+                                        ChallengePage.SHOP,
+                                        ChallengePage.GALLERY,
+                                        ChallengePage.FRIENDS,
+                                        ChallengePage.BADGES
+                                    ).forEach { page ->
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(id = page.titleRes)) },
+                                            onClick = {
+                                                floatingMenuExpanded = false
+                                                showChallengesPage(page)
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -573,6 +792,7 @@ class DashboardActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_OPEN_AREA = "open_area"
+        const val EXTRA_OPEN_CHALLENGE_PAGE = "open_challenge_page"
         const val EXTRA_OPEN_ACTION = "open_action"
         const val OPEN_ACTION_CREATE_ALARM = "create_alarm"
     }

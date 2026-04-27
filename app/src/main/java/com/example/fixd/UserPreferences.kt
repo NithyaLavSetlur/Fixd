@@ -8,6 +8,7 @@ object UserPreferences {
     private const val PREFS_NAME = "fixd_user_preferences"
     private const val KEY_THEME_MODE = "theme_mode"
     private const val KEY_THEME_SEED_COLOR = "theme_seed_color"
+    private const val KEY_LAST_DESTINATION_PREFIX = "last_destination_"
 
     const val THEME_SYSTEM = "system"
     const val THEME_LIGHT = "light"
@@ -50,6 +51,18 @@ object UserPreferences {
     fun getThemeSeedColor(context: Context): Int {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getInt(KEY_THEME_SEED_COLOR, ThemePaletteManager.DEFAULT_SEED_COLOR)
+    }
+
+    fun saveLastDestination(context: Context, userId: String, destination: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString("$KEY_LAST_DESTINATION_PREFIX$userId", destination)
+            .apply()
+    }
+
+    fun getLastDestination(context: Context, userId: String): String? {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString("$KEY_LAST_DESTINATION_PREFIX$userId", null)
     }
 
     fun applyTheme(context: Context) {

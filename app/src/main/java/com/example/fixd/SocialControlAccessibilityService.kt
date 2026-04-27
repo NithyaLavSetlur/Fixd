@@ -10,6 +10,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.annotation.RequiresApi
 
 class SocialControlAccessibilityService : AccessibilityService() {
     private var lastInstagramRedirectAt = 0L
@@ -19,14 +20,7 @@ class SocialControlAccessibilityService : AccessibilityService() {
     private val pendingInstagramRedirects = mutableListOf<Runnable>()
     private val pendingInstagramRechecks = mutableListOf<Runnable>()
     private val pendingYoutubeRechecks = mutableListOf<Runnable>()
-    private val accessibilityButtonCallback = object : AccessibilityButtonController.AccessibilityButtonCallback() {
-        override fun onClicked(controller: AccessibilityButtonController) {
-            SocialControlManager.toggleQuickSettings(
-                this@SocialControlAccessibilityService,
-                targetApp = currentForegroundPackage
-            )
-        }
-    }
+    private var accessibilityButtonCallback: AccessibilityButtonController.AccessibilityButtonCallback? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -34,12 +28,16 @@ class SocialControlAccessibilityService : AccessibilityService() {
             flags = flags or
                 AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
                 AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
-                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-                AccessibilityServiceInfo.FLAG_REQUEST_ACCESSIBILITY_BUTTON
+                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_ACCESSIBILITY_BUTTON
+            }
             notificationTimeout = 50
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            accessibilityButtonController.registerAccessibilityButtonCallback(accessibilityButtonCallback)
+            val callback = createAccessibilityButtonCallback()
+            accessibilityButtonCallback = callback
+            accessibilityButtonController.registerAccessibilityButtonCallback(callback)
         }
    }
 
@@ -48,9 +46,19 @@ class SocialControlAccessibilityService : AccessibilityService() {
         clearInstagramRechecks()
         clearYoutubeRechecks()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            accessibilityButtonController.unregisterAccessibilityButtonCallback(accessibilityButtonCallback)
+            accessibilityButtonCallback?.let { accessibilityButtonController.unregisterAccessibilityButtonCallback(it) }
         }
         super.onDestroy()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun createAccessibilityButtonCallback() = object : AccessibilityButtonController.AccessibilityButtonCallback() {
+        override fun onClicked(controller: AccessibilityButtonController) {
+            SocialControlManager.toggleQuickSettings(
+                this@SocialControlAccessibilityService,
+                targetApp = currentForegroundPackage
+            )
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {

@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,7 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -122,15 +124,21 @@ class ProblemSelectionActivity : AppCompatActivity() {
     private fun ProblemSelectionScreen() {
         val isDisplayStep = currentStep == SelectionStep.DISPLAY
         val progress = if (isDisplayStep) 1f else 0.5f
+        val scrollState = rememberScrollState()
 
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+            contentAlignment = Alignment.Center
         ) {
-            item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically)
+            ) {
                 Text(
                     text = stringResource(
                         if (isDisplayStep) R.string.selection_display_title else R.string.selection_title
@@ -139,21 +147,11 @@ class ProblemSelectionActivity : AppCompatActivity() {
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = stringResource(
-                        if (isDisplayStep) R.string.selection_display_subtitle else R.string.selection_subtitle
-                    ),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(22.dp))
+                Spacer(modifier = Modifier.height(18.dp))
                 LinearProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.fillMaxWidth()
                 )
-            }
-            item {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(22.dp)) {
                         ProblemArea.entries.forEach { area ->
@@ -170,8 +168,6 @@ class ProblemSelectionActivity : AppCompatActivity() {
                         }
                     }
                 }
-            }
-            item {
                 Button(
                     onClick = {
                         if (currentStep == SelectionStep.ACTIVATE) {
@@ -320,6 +316,8 @@ class ProblemSelectionActivity : AppCompatActivity() {
                     userId = userId,
                     profile = UserProfile(
                         preferredName = currentName,
+                        username = profile.username,
+                        email = user.email.orEmpty(),
                         availableProblems = availableProblems,
                         selectedProblems = tabBarProblems,
                         isPremium = premium,
