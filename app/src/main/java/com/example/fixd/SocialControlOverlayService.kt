@@ -181,7 +181,7 @@ class SocialControlOverlayService : Service() {
                         updateSettings(settings.copy(instagramBlockReels = it))
                     })
                     addView(TextView(context).apply {
-                        text = "Feed browsing stays allowed. Reels opened from the feed are sent to Messages, and reels opened from chats are closed back to the chat thread."
+                        text = "Whenever Instagram opens an active Reel viewer, Fixd redirects to Messages."
                         textSize = 12f
                         alpha = 0.72f
                         setPadding(0, 4, 0, 0)

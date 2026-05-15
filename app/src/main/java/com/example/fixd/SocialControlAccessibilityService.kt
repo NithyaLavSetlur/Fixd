@@ -20,6 +20,8 @@ class SocialControlAccessibilityService : AccessibilityService() {
     private val pendingInstagramRedirects = mutableListOf<Runnable>()
     private val pendingInstagramRechecks = mutableListOf<Runnable>()
     private val pendingYoutubeRechecks = mutableListOf<Runnable>()
+    private var instagramForegroundWatchdog: Runnable? = null
+    private var youtubeForegroundWatchdog: Runnable? = null
     private var accessibilityButtonCallback: AccessibilityButtonController.AccessibilityButtonCallback? = null
 
     override fun onServiceConnected() {
@@ -45,6 +47,8 @@ class SocialControlAccessibilityService : AccessibilityService() {
         clearInstagramRedirects()
         clearInstagramRechecks()
         clearYoutubeRechecks()
+        clearInstagramForegroundWatchdog()
+        clearYoutubeForegroundWatchdog()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             accessibilityButtonCallback?.let { accessibilityButtonController.unregisterAccessibilityButtonCallback(it) }
         }
@@ -69,6 +73,8 @@ class SocialControlAccessibilityService : AccessibilityService() {
         }
         val settings = SocialControlPreferences.load(this)
         if (!settings.appControlEnabled) {
+            clearInstagramForegroundWatchdog()
+            clearYoutubeForegroundWatchdog()
             hideBlocker()
             return
         }
@@ -80,9 +86,21 @@ class SocialControlAccessibilityService : AccessibilityService() {
         }
 
         when {
-            effectivePackage.contains("youtube", ignoreCase = true) -> handleYoutube(settings, event)
-            effectivePackage.contains("instagram", ignoreCase = true) -> handleInstagram(settings, event)
-            else -> hideBlocker()
+            effectivePackage.contains("youtube", ignoreCase = true) -> {
+                ensureYoutubeForegroundWatchdog()
+                clearInstagramForegroundWatchdog()
+                handleYoutube(settings, event)
+            }
+            effectivePackage.contains("instagram", ignoreCase = true) -> {
+                ensureInstagramForegroundWatchdog()
+                clearYoutubeForegroundWatchdog()
+                handleInstagram(settings, event)
+            }
+            else -> {
+                clearInstagramForegroundWatchdog()
+                clearYoutubeForegroundWatchdog()
+                hideBlocker()
+            }
         }
     }
 
@@ -115,6 +133,13 @@ class SocialControlAccessibilityService : AccessibilityService() {
     }
 
     private fun handleInstagram(settings: SocialControlSettings, event: AccessibilityEvent?) {
+        if (!settings.instagramBlockReels) {
+            clearInstagramRedirects()
+            clearInstagramRechecks()
+            hideBlocker()
+            return
+        }
+
         val root = findRootForPackage(INSTAGRAM_PACKAGE, event?.source)
         if (root == null) {
             Log.d(TAG, "Instagram check skipped: no Instagram root found; scheduling recheck")
@@ -122,51 +147,22 @@ class SocialControlAccessibilityService : AccessibilityService() {
             return
         }
         clearInstagramRechecks()
-        val onReelsTab = settings.instagramBlockReels && isInstagramTabSelected(root, INSTAGRAM_REELS_TAB_ID)
-        val inMessages = isInstagramTabSelected(root, INSTAGRAM_DIRECT_TAB_ID)
-        val inReelViewer = settings.instagramBlockReels && isInstagramReelViewer(root, event)
-        val inChatReelViewer = inReelViewer && isInstagramMessagesContext(root)
+        val inReelViewer = isInstagramReelViewer(root, event)
 
-        Log.d(
-            TAG,
-            "Instagram check: onReelsTab=$onReelsTab inReelViewer=$inReelViewer inChatReelViewer=$inChatReelViewer inMessages=$inMessages"
-        )
+        Log.d(TAG, "Instagram check: inReelViewer=$inReelViewer")
 
-        when {
-            inChatReelViewer -> {
-                redirectInstagramBackToChat()
-                hideBlocker()
-            }
-            inReelViewer -> {
-                redirectInstagramToMessages(root)
-                hideBlocker()
-            }
-            inMessages -> {
-                clearInstagramRedirects()
-                hideBlocker()
-            }
-            onReelsTab -> {
-                redirectInstagramToMessages(root)
-                hideBlocker()
-            }
-            else -> hideBlocker()
+        if (inReelViewer) {
+            redirectInstagramToMessages(root, backOutOfViewerFirst = true)
+        } else {
+            clearInstagramRedirects()
+            hideBlocker()
         }
     }
 
-    private fun redirectInstagramToMessages(root: AccessibilityNodeInfo): Boolean {
-        val now = System.currentTimeMillis()
-        if (now - lastInstagramRedirectAt < INSTAGRAM_REDIRECT_COOLDOWN_MS) {
-            return true
-        }
-        clearInstagramRedirects()
-        lastInstagramRedirectAt = now
-        val immediateRedirect = runInstagramMessagesRedirectAttempt(root)
-        scheduleInstagramRedirectAttempts()
-        hideBlocker()
-        return immediateRedirect
-    }
-
-    private fun redirectInstagramBackToChat(): Boolean {
+    private fun redirectInstagramToMessages(
+        root: AccessibilityNodeInfo,
+        backOutOfViewerFirst: Boolean = false
+    ): Boolean {
         val now = System.currentTimeMillis()
         if (now - lastInstagramRedirectAt < INSTAGRAM_REDIRECT_COOLDOWN_MS) {
             return true
@@ -174,55 +170,41 @@ class SocialControlAccessibilityService : AccessibilityService() {
         clearInstagramRedirects()
         clearInstagramRechecks()
         lastInstagramRedirectAt = now
-        val backedOut = performGlobalAction(GLOBAL_ACTION_BACK)
-        if (backedOut) {
-            Log.d(TAG, "Instagram redirect: backed out of reel to chat")
-            scheduleInstagramChatReturnAttempts()
-        }
+        val immediateRedirect = runInstagramMessagesRedirectAttempt(root, backOutOfViewerFirst)
+        scheduleInstagramMessagesRedirectAttempts()
         hideBlocker()
-        return backedOut
+        return immediateRedirect
     }
 
-    private fun scheduleInstagramRedirectAttempts() {
+    private fun runInstagramMessagesRedirectAttempt(
+        root: AccessibilityNodeInfo,
+        backOutOfViewerFirst: Boolean
+    ): Boolean {
+        if (isInstagramMessagesContext(root)) {
+            clearInstagramRedirects()
+            return true
+        }
+
+        val clickedMessages = clickNode(findInstagramMessagesTarget(root))
+        if (clickedMessages) {
+            Log.d(TAG, "Instagram redirect: clicked Messages tab")
+            return true
+        }
+
+        return backOutOfViewerFirst && performGlobalAction(GLOBAL_ACTION_BACK)
+    }
+
+    private fun scheduleInstagramMessagesRedirectAttempts() {
         val attempts = listOf(90L, 220L, 420L, 760L, 1150L)
         attempts.forEach { delayMs ->
             val runnable = Runnable {
                 val root = findRootForPackage(INSTAGRAM_PACKAGE)
                 if (root == null) return@Runnable
-                runInstagramMessagesRedirectAttempt(root)
+                runInstagramMessagesRedirectAttempt(root, backOutOfViewerFirst = false)
             }
             pendingInstagramRedirects += runnable
             handler.postDelayed(runnable, delayMs)
         }
-    }
-
-    private fun scheduleInstagramChatReturnAttempts() {
-        val attempts = listOf(140L, 320L, 620L)
-        attempts.forEach { delayMs ->
-            val runnable = Runnable {
-                val root = findRootForPackage(INSTAGRAM_PACKAGE) ?: return@Runnable
-                if (isInstagramReelViewer(root, null)) {
-                    performGlobalAction(GLOBAL_ACTION_BACK)
-                }
-            }
-            pendingInstagramRedirects += runnable
-            handler.postDelayed(runnable, delayMs)
-        }
-    }
-
-    private fun runInstagramMessagesRedirectAttempt(root: AccessibilityNodeInfo): Boolean {
-        if (isInstagramTabSelected(root, INSTAGRAM_DIRECT_TAB_ID)) {
-            clearInstagramRedirects()
-            return true
-        }
-
-        val clickedDirect = clickNode(findNodeByViewId(root, INSTAGRAM_DIRECT_TAB_ID))
-        if (clickedDirect) {
-            Log.d(TAG, "Instagram redirect: clicked Messages tab")
-            return true
-        }
-
-        return false
     }
 
     private fun clearInstagramRedirects() {
@@ -249,6 +231,28 @@ class SocialControlAccessibilityService : AccessibilityService() {
         pendingInstagramRechecks.clear()
     }
 
+    private fun ensureInstagramForegroundWatchdog() {
+        if (instagramForegroundWatchdog != null) return
+        val runnable = object : Runnable {
+            override fun run() {
+                val settings = SocialControlPreferences.load(this@SocialControlAccessibilityService)
+                if (!settings.appControlEnabled || currentForegroundPackage?.contains("instagram", ignoreCase = true) != true) {
+                    clearInstagramForegroundWatchdog()
+                    return
+                }
+                handleInstagram(settings, null)
+                handler.postDelayed(this, INSTAGRAM_FOREGROUND_WATCHDOG_MS)
+            }
+        }
+        instagramForegroundWatchdog = runnable
+        handler.postDelayed(runnable, INSTAGRAM_FOREGROUND_WATCHDOG_MS)
+    }
+
+    private fun clearInstagramForegroundWatchdog() {
+        instagramForegroundWatchdog?.let { handler.removeCallbacks(it) }
+        instagramForegroundWatchdog = null
+    }
+
     private fun scheduleYoutubeRecheck() {
         clearYoutubeRechecks()
         listOf(120L, 280L, 520L, 820L).forEach { delayMs ->
@@ -266,6 +270,28 @@ class SocialControlAccessibilityService : AccessibilityService() {
     private fun clearYoutubeRechecks() {
         pendingYoutubeRechecks.forEach { handler.removeCallbacks(it) }
         pendingYoutubeRechecks.clear()
+    }
+
+    private fun ensureYoutubeForegroundWatchdog() {
+        if (youtubeForegroundWatchdog != null) return
+        val runnable = object : Runnable {
+            override fun run() {
+                val settings = SocialControlPreferences.load(this@SocialControlAccessibilityService)
+                if (!settings.appControlEnabled || currentForegroundPackage?.contains("youtube", ignoreCase = true) != true) {
+                    clearYoutubeForegroundWatchdog()
+                    return
+                }
+                handleYoutube(settings, null)
+                handler.postDelayed(this, YOUTUBE_FOREGROUND_WATCHDOG_MS)
+            }
+        }
+        youtubeForegroundWatchdog = runnable
+        handler.postDelayed(runnable, YOUTUBE_FOREGROUND_WATCHDOG_MS)
+    }
+
+    private fun clearYoutubeForegroundWatchdog() {
+        youtubeForegroundWatchdog?.let { handler.removeCallbacks(it) }
+        youtubeForegroundWatchdog = null
     }
 
     private fun redirectYoutubeToHome(root: AccessibilityNodeInfo): Boolean {
@@ -333,6 +359,10 @@ class SocialControlAccessibilityService : AccessibilityService() {
         root: AccessibilityNodeInfo,
         event: AccessibilityEvent?
     ): Boolean {
+        if (isInstagramExploreReelGrid(root)) {
+            return false
+        }
+
         val signalText = buildString {
             append(flattenNodeText(root))
             append(' ')
@@ -342,30 +372,34 @@ class SocialControlAccessibilityService : AccessibilityService() {
             append(' ')
             append(event?.className?.toString().orEmpty())
         }
-        val onFeedTab = isInstagramTabSelected(root, INSTAGRAM_HOME_TAB_ID)
-        val inMessages = isInstagramMessagesContext(root)
 
-        val hasStrongViewerSignal = INSTAGRAM_REEL_VIEWER_STRONG_SIGNALS.any { keyword ->
+        if (INSTAGRAM_REEL_VIEWER_STRONG_SIGNALS.any { keyword ->
+            signalText.contains(keyword, ignoreCase = true)
+        }) return true
+
+        val hasViewerChrome = INSTAGRAM_REEL_VIEWER_CHROME_SIGNALS.count { keyword ->
+            signalText.contains(keyword, ignoreCase = true)
+        } >= 2
+        val hasReelMediaSignal = INSTAGRAM_REEL_MEDIA_SIGNALS.any { keyword ->
             signalText.contains(keyword, ignoreCase = true)
         }
-        if (hasStrongViewerSignal) {
-            return if (onFeedTab && !inMessages) {
-                INSTAGRAM_FEED_REEL_VIEWER_CONFIRM_SIGNALS.any { keyword ->
-                    signalText.contains(keyword, ignoreCase = true)
-                }
-            } else {
-                true
-            }
-        }
-
-        val weakSignalMatches = INSTAGRAM_REEL_VIEWER_WEAK_SIGNALS.count { keyword ->
-            signalText.contains(keyword, ignoreCase = true)
-        }
-        return if (onFeedTab && !inMessages) weakSignalMatches >= 3 else weakSignalMatches >= 2
+        return hasViewerChrome && hasReelMediaSignal
     }
 
     private fun isInstagramMessagesContext(root: AccessibilityNodeInfo): Boolean {
-        return isInstagramTabSelected(root, INSTAGRAM_DIRECT_TAB_ID)
+        return isInstagramTabSelected(root, INSTAGRAM_DIRECT_TAB_IDS) ||
+            isNodeSelectedMatchingAny(root, INSTAGRAM_MESSAGES_TAB_SIGNALS)
+    }
+
+    private fun isInstagramSearchContext(root: AccessibilityNodeInfo): Boolean {
+        return isInstagramTabSelected(root, INSTAGRAM_SEARCH_TAB_IDS) ||
+            isNodeSelectedMatchingAny(root, INSTAGRAM_SEARCH_TAB_SIGNALS)
+    }
+
+    private fun isInstagramExploreReelGrid(root: AccessibilityNodeInfo): Boolean {
+        return isInstagramSearchContext(root) &&
+            (countNodesByViewId(root, INSTAGRAM_REEL_GRID_PLAY_COUNT_ID) >= 2 ||
+                countNodesContainingAny(root, INSTAGRAM_REEL_GRID_PREVIEW_SIGNALS) >= 3)
     }
 
     private fun isYoutubeShortsViewer(
@@ -470,8 +504,30 @@ class SocialControlAccessibilityService : AccessibilityService() {
         return null
     }
 
+    private fun countNodesByViewId(node: AccessibilityNodeInfo?, viewId: String): Int {
+        if (node == null) return 0
+        var count = if (node.viewIdResourceName == viewId) 1 else 0
+        for (index in 0 until node.childCount) {
+            count += countNodesByViewId(node.getChild(index), viewId)
+        }
+        return count
+    }
+
+    private fun countNodesContainingAny(node: AccessibilityNodeInfo?, keywords: List<String>): Int {
+        if (node == null) return 0
+        var count = if (nodeMatchesAny(node, keywords)) 1 else 0
+        for (index in 0 until node.childCount) {
+            count += countNodesContainingAny(node.getChild(index), keywords)
+        }
+        return count
+    }
+
     private fun isInstagramTabSelected(root: AccessibilityNodeInfo, viewId: String): Boolean {
-        return findNodeByViewId(root, viewId)?.isSelected == true
+        return isInstagramTabSelected(root, listOf(viewId))
+    }
+
+    private fun isInstagramTabSelected(root: AccessibilityNodeInfo, viewIds: List<String>): Boolean {
+        return viewIds.any { viewId -> findNodeByViewId(root, viewId)?.isSelected == true }
     }
 
     private fun isNodeSelectedMatchingAny(node: AccessibilityNodeInfo?, keywords: List<String>): Boolean {
@@ -522,6 +578,16 @@ class SocialControlAccessibilityService : AccessibilityService() {
         // No visible blocker is shown now; enforcement redirects silently.
     }
 
+    private fun findInstagramMessagesTarget(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        INSTAGRAM_DIRECT_TAB_IDS.forEach { viewId ->
+            val directMatch = findNodeByViewId(root, viewId)
+            if (directMatch != null) {
+                return directMatch
+            }
+        }
+        return findNodeContainingAny(root, INSTAGRAM_MESSAGES_TAB_SIGNALS)
+    }
+
     private fun findYoutubeHomeTarget(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         return findNodeContainingAny(root, listOf("pivot_home", "tab_home", "navigation_bar_item_large_label_view"))
             ?.takeIf { nodeMatchesAny(it, YOUTUBE_HOME_TAB_SIGNALS) }
@@ -532,32 +598,62 @@ class SocialControlAccessibilityService : AccessibilityService() {
         private const val TAG = "FixdSocialControl"
         private const val INSTAGRAM_PACKAGE = "com.instagram.android"
         private const val YOUTUBE_PACKAGE = "com.google.android.youtube"
-        private const val INSTAGRAM_HOME_TAB_ID = "com.instagram.android:id/feed_tab"
-        private const val INSTAGRAM_DIRECT_TAB_ID = "com.instagram.android:id/direct_tab"
-        private const val INSTAGRAM_REELS_TAB_ID = "com.instagram.android:id/clips_tab"
+        private val INSTAGRAM_DIRECT_TAB_IDS = listOf(
+            "com.instagram.android:id/direct_tab",
+            "com.instagram.android:id/messaging_tab"
+        )
+        private val INSTAGRAM_SEARCH_TAB_IDS = listOf(
+            "com.instagram.android:id/search_tab",
+            "com.instagram.android:id/explore_tab"
+        )
+        private const val INSTAGRAM_REEL_GRID_PLAY_COUNT_ID = "com.instagram.android:id/preview_clip_play_count"
         private const val INSTAGRAM_REDIRECT_COOLDOWN_MS = 900L
         private const val YOUTUBE_REDIRECT_COOLDOWN_MS = 900L
+        private const val INSTAGRAM_FOREGROUND_WATCHDOG_MS = 250L
+        private const val YOUTUBE_FOREGROUND_WATCHDOG_MS = 350L
+        private val INSTAGRAM_SEARCH_TAB_SIGNALS = listOf(
+            "search",
+            "search and explore",
+            "explore",
+            "discover"
+        )
+        private val INSTAGRAM_MESSAGES_TAB_SIGNALS = listOf(
+            "direct",
+            "messages",
+            "messenger"
+        )
         private val INSTAGRAM_REEL_VIEWER_STRONG_SIGNALS = listOf(
             "reel_viewer",
             "clips_viewer",
             "clips viewer",
-            "reels viewer"
-        )
-        private val INSTAGRAM_FEED_REEL_VIEWER_CONFIRM_SIGNALS = listOf(
-            "reel_viewer",
-            "clips_viewer",
-            "clips viewer",
             "reels viewer",
+            "reel_player",
+            "reel player",
+            "reel_watch",
+            "reel watch"
+        )
+        private val INSTAGRAM_REEL_VIEWER_CHROME_SIGNALS = listOf(
+            "like",
+            "comment",
+            "share",
+            "send",
+            "more options",
+            "audio",
+            "follow"
+        )
+        private val INSTAGRAM_REEL_MEDIA_SIGNALS = listOf(
             "reel by",
             "reel audio",
-            "reels audio"
-        )
-        private val INSTAGRAM_REEL_VIEWER_WEAK_SIGNALS = listOf(
-            "reel by",
+            "reels audio",
+            "watch and browse reels",
             "send reel",
             "share reel",
-            "reel audio",
-            "reels audio"
+            "comment on reel"
+        )
+        private val INSTAGRAM_REEL_GRID_PREVIEW_SIGNALS = listOf(
+            "preview_clip_play_count",
+            "image_preview",
+            "reel by"
         )
         private val YOUTUBE_HOME_TAB_SIGNALS = listOf(
             "home",

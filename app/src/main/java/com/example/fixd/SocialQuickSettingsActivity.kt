@@ -144,7 +144,7 @@ private fun SocialQuickSettingsScreen(
                             updateSettings { current -> current.copy(instagramBlockReels = it) }
                         }
                         Text(
-                            text = "Feed browsing stays allowed. Reels opened from the feed are sent to Messages, and reels opened from chats are closed back to the same chat thread.",
+                            text = "Whenever Instagram opens an active Reel viewer, Fixd redirects to Messages.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -170,7 +170,7 @@ private fun SocialQuickSettingsScreen(
                             updateSettings { current -> current.copy(instagramBlockReels = it) }
                         }
                         Text(
-                            text = "Instagram feed browsing stays allowed. Feed-opened reels redirect to Messages, while chat-opened reels are closed back to the chat thread.",
+                            text = "Instagram Reels are blocked by redirecting to Messages whenever an active Reel viewer appears.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

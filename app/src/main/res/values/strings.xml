@@ -108,13 +108,13 @@
     <string name="social_shortcut_note">There is no separate Fixd floating icon anymore. The quick settings popup now opens from the system accessibility shortcut.</string>
     <string name="social_shortcut_steps">Enable Fixd Social Control in Accessibility settings, then add the Android accessibility button or shortcut and use it whenever you want to open the popup.</string>
     <string name="social_instagram_title">Instagram</string>
-    <string name="social_instagram_body">Instagram feed browsing stays allowed. Reels opened from the feed or the Reels tab are redirected to Messages, and reels opened from chats are closed back to the same chat thread.</string>
+    <string name="social_instagram_body">Instagram browsing stays allowed until a Reel opens. Whenever Fixd detects an active Instagram Reel viewer, it redirects to Messages.</string>
     <string name="social_instagram_reels_title">Disable Reels</string>
-    <string name="social_instagram_reels_body">When enabled, Fixd blocks the Reels tab, reels opened from the feed, and reels opened from chats.</string>
+    <string name="social_instagram_reels_body">When enabled, Fixd redirects to Messages whenever any Instagram Reel opens and starts showing in the Reel viewer.</string>
     <string name="social_instagram_discover_title">Disable Feed tab</string>
     <string name="social_instagram_discover_body">When enabled, Fixd blocks Instagram’s main Feed tab and redirects it back to Messages.</string>
     <string name="social_instagram_messages_title">Messages redirect</string>
-    <string name="social_instagram_messages_body">Feed browsing stays allowed. Reels opened from the feed or Reels tab are sent to Messages. Reels opened from chats are closed back to the same chat thread.</string>
+    <string name="social_instagram_messages_body">Whenever an Instagram Reel opens, Fixd redirects to Messages.</string>
     <string name="social_youtube_title">YouTube</string>
     <string name="social_youtube_body">YouTube can block the Shorts tab and Shorts opened from inside the app, while leaving normal Home feed browsing alone.</string>
     <string name="social_youtube_shorts_title">Disable Shorts</string>

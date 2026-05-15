@@ -489,6 +489,12 @@ private fun SocialSettingsCard(
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(16.dp))
             content()
         }
     }
@@ -520,5 +526,11 @@ private fun SocialSettingRow(
             onCheckedChange = onCheckedChange
         )
     }
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(
+        text = body,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
     Spacer(modifier = Modifier.height(14.dp))
 }
