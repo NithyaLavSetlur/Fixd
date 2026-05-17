@@ -2,6 +2,7 @@
 .gradle
 .gradle-user
 .gradle-user-home
+.kotlin/
 /local.properties
 /.idea/caches
 /.idea/libraries
@@ -24,3 +25,38 @@ app/google-services.json
 backend/worker/.dev.vars
 backend/worker/.env
 backend/worker/.env.*
+backend/worker/.wrangler/
+backend/worker/node_modules/
+
+# Node / backend dependencies and build output
+node_modules/
+.npm/
+.eslintcache
+coverage/
+dist/
+
+# Firebase / deployment caches
+.firebase/
+.wrangler/
+.vercel/
+.netlify/
+
+# Local credentials and signing material
+*.jks
+*.keystore
+*.p8
+*.pem
+service-account*.json
+*-service-account.json
+
+# Local QA screenshots and UI dumps
+/app_launch*.png
+/app_launch*_ui.xml
+/current_ui.xml
+/fixd_instagram_*.xml
+/fixd_launch.png
+/fixd_signup.png
+/fixd_ui*.xml
+/ig_*.png
+/window*.xml
+/FIXD_REELS_BLOCKING_CHAT_HANDOFF.md
