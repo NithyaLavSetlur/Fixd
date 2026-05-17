@@ -2,6 +2,7 @@ package com.example.fixd
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,12 +29,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -47,10 +51,27 @@ fun HomeRoute(
     onOpenArea: (ProblemArea) -> Unit,
     onOpenTabDisplayChooser: () -> Unit
 ) {
+    val context = LocalContext.current
+    val leftSwipeAction = remember { UserPreferences.getTileSwipeLeftAction(context) }
+    val rightSwipeAction = remember { UserPreferences.getTileSwipeRightAction(context) }
+
+    fun runTileSwipeAction(area: ProblemArea, action: String) {
+        val currentIndex = selectedProblems.indexOf(area)
+        val target = when (action) {
+            UserPreferences.TILE_SWIPE_OPEN -> area
+            UserPreferences.TILE_SWIPE_PREVIOUS -> selectedProblems.getOrNull(currentIndex - 1)
+            UserPreferences.TILE_SWIPE_NEXT -> selectedProblems.getOrNull(currentIndex + 1)
+            else -> null
+        }
+        if (target != null) {
+            onOpenArea(target)
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 24.dp),
+            .padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { Spacer(modifier = Modifier.height(18.dp)) }
@@ -59,13 +80,22 @@ fun HomeRoute(
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        Text(
+                            text = stringResource(id = R.string.home_empty_title),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = stringResource(id = R.string.home_empty_body),
                             style = MaterialTheme.typography.bodyLarge,
@@ -75,7 +105,9 @@ fun HomeRoute(
                         Spacer(modifier = Modifier.height(20.dp))
                         Button(
                             onClick = onOpenTabDisplayChooser,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 50.dp)
                         ) {
                             Text(stringResource(id = R.string.home_choose_tabs_button))
                         }
@@ -84,7 +116,12 @@ fun HomeRoute(
             }
         } else {
             items(selectedProblems, key = { it.name }) { area ->
-                HomeFocusCard(area = area, onClick = { onOpenArea(area) })
+                HomeFocusCard(
+                    area = area,
+                    onClick = { onOpenArea(area) },
+                    onSwipeLeft = { runTileSwipeAction(area, leftSwipeAction) },
+                    onSwipeRight = { runTileSwipeAction(area, rightSwipeAction) }
+                )
             }
         }
 
@@ -97,15 +134,33 @@ fun HomeRoute(
 @Composable
 private fun HomeFocusCard(
     area: ProblemArea,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onSwipeLeft: () -> Unit,
+    onSwipeRight: () -> Unit
 ) {
     val palette = ThemePaletteManager.currentPalette(LocalContext.current)
+    var dragTotal by remember { mutableFloatStateOf(0f) }
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .pointerInput(onSwipeLeft, onSwipeRight) {
+                detectHorizontalDragGestures(
+                    onDragStart = { dragTotal = 0f },
+                    onHorizontalDrag = { _, dragAmount -> dragTotal += dragAmount },
+                    onDragEnd = {
+                        when {
+                            dragTotal <= -SwipeThresholdPx -> onSwipeLeft()
+                            dragTotal >= SwipeThresholdPx -> onSwipeRight()
+                        }
+                        dragTotal = 0f
+                    },
+                    onDragCancel = { dragTotal = 0f }
+                )
+            }
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
             modifier = Modifier.padding(18.dp),
@@ -119,7 +174,7 @@ private fun HomeFocusCard(
             ) {
                 androidx.compose.material3.Icon(
                     painter = painterResource(id = area.iconRes),
-                    contentDescription = null,
+                    contentDescription = stringResource(id = area.titleRes),
                     tint = Color(ThemePaletteManager.readableTextColorOn(palette.primary, palette)),
                     modifier = Modifier.size(24.dp)
                 )
@@ -132,7 +187,6 @@ private fun HomeFocusCard(
                 Text(
                     text = stringResource(id = area.titleRes),
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -141,10 +195,18 @@ private fun HomeFocusCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringResource(id = R.string.home_card_action_hint),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }
 }
+
+private const val SwipeThresholdPx = 120f
 
 @Composable
 fun PremiumRoute() {
@@ -164,7 +226,7 @@ fun PremiumRoute() {
     LazyColumn(
         modifier = Modifier
             .background(MaterialTheme.colorScheme.background)
-            .padding(24.dp),
+            .padding(horizontal = 12.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         item {
@@ -221,7 +283,7 @@ fun ProblemAreaPlaceholderRoute(area: ProblemArea) {
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(24.dp),
+            .padding(horizontal = 12.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -306,7 +368,7 @@ fun SocialMediaDistractionRoute() {
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 24.dp),
+            .padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -33,6 +34,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
@@ -125,12 +131,14 @@ class ProblemSelectionActivity : AppCompatActivity() {
         val isDisplayStep = currentStep == SelectionStep.DISPLAY
         val progress = if (isDisplayStep) 1f else 0.5f
         val scrollState = rememberScrollState()
+        val selectedCount = if (isDisplayStep) displayedAreas.size else activatedAreas.size
+        val requiredDisplayCount = requiredDisplayCount()
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .padding(24.dp),
+                .padding(horizontal = 16.dp, vertical = 20.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(
@@ -144,16 +152,49 @@ class ProblemSelectionActivity : AppCompatActivity() {
                         if (isDisplayStep) R.string.selection_display_title else R.string.selection_title
                     ),
                     style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
-                Spacer(modifier = Modifier.height(18.dp))
+                Text(
+                    text = stringResource(
+                        if (isDisplayStep) R.string.selection_display_subtitle else R.string.selection_subtitle
+                    ),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.74f)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = stringResource(
+                        if (isDisplayStep) R.string.selection_step_display else R.string.selection_step_activate
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
                 LinearProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.fillMaxWidth()
                 )
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(modifier = Modifier.padding(22.dp)) {
+                Card(
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = stringResource(
+                                if (isDisplayStep) {
+                                    R.string.selection_display_count
+                                } else {
+                                    R.string.selection_activate_count
+                                },
+                                selectedCount,
+                                if (isDisplayStep) requiredDisplayCount else PremiumAccess.maxAvailableProblems(isPremium)
+                            ),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         ProblemArea.entries.forEach { area ->
                             val checked = if (isDisplayStep) area in displayedAreas else area in activatedAreas
                             val enabled = !isDisplayStep || area in activatedAreas
@@ -168,6 +209,23 @@ class ProblemSelectionActivity : AppCompatActivity() {
                         }
                     }
                 }
+                Text(
+                    text = stringResource(
+                        if (isDisplayStep) {
+                            if (displayedAreas.size == requiredDisplayCount) R.string.selection_ready_to_finish
+                            else R.string.selection_display_helper
+                        } else {
+                            R.string.selection_activate_helper
+                        },
+                        requiredDisplayCount
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isDisplayStep && displayedAreas.size != requiredDisplayCount) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f)
+                    }
+                )
                 Button(
                     onClick = {
                         if (currentStep == SelectionStep.ACTIVATE) {
@@ -176,7 +234,9 @@ class ProblemSelectionActivity : AppCompatActivity() {
                             auth.currentUser?.uid?.let(::saveSelections)
                         }
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 52.dp)
                 ) {
                     Text(
                         stringResource(
@@ -199,8 +259,13 @@ class ProblemSelectionActivity : AppCompatActivity() {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .semantics {
+                    role = Role.Checkbox
+                    selected = checked
+                    contentDescription = area.name.lowercase().replace('_', ' ')
+                }
                 .clickable(enabled = enabled, onClick = onToggle)
-                .padding(vertical = 6.dp),
+                .padding(vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Checkbox(
@@ -210,6 +275,8 @@ class ProblemSelectionActivity : AppCompatActivity() {
             )
             Text(
                 text = stringResource(area.titleRes),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (checked) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -324,7 +391,7 @@ class ProblemSelectionActivity : AppCompatActivity() {
                         premiumSince = profile.premiumSince
                     ),
                     onSuccess = {
-                        LocalAlarmCache.saveAlarms(this, emptyList())
+                        LocalAlarmCache.saveAlarms(this, auth.currentUser?.uid.orEmpty(), emptyList())
                         startActivity(Intent(this, DashboardActivity::class.java))
                         finish()
                     },

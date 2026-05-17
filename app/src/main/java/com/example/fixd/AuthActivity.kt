@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -604,6 +606,13 @@ private fun AuthScreen(
             Color(palette.primaryDark).copy(alpha = 0.3f)
         )
     )
+    val trimmedName = name.trim()
+    val trimmedUsername = username.trim()
+    val trimmedEmail = email.trim()
+    val passwordMismatch = isSignUpMode && confirmPassword.isNotBlank() && password != confirmPassword
+    val usernameInvalid = trimmedUsername.isNotBlank() && !UserProfileRepository.isUsernameValid(trimmedUsername)
+    val showNameError = isSignUpMode && name.isNotBlank() && trimmedName.isBlank()
+    val showEmailHint = trimmedEmail.isBlank() && (email.isNotBlank())
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -661,6 +670,17 @@ private fun AuthScreen(
                             color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Bold
                         )
+                        if (authFlowMode != AuthActivity.AuthFlowMode.GOOGLE_USERNAME) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(
+                                    if (isSignUpMode) R.string.auth_signup_subtitle else R.string.auth_subtitle
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center
+                            )
+                        }
 
                         if (authFlowMode == AuthActivity.AuthFlowMode.GOOGLE_USERNAME) {
                             Spacer(modifier = Modifier.height(24.dp))
@@ -677,7 +697,16 @@ private fun AuthScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 label = { Text(stringResource(id = R.string.username_label)) },
                                 singleLine = true,
-                                enabled = firebaseReady && !isLoading
+                                enabled = firebaseReady && !isLoading,
+                                isError = usernameInvalid,
+                                supportingText = {
+                                    Text(
+                                        stringResource(
+                                            if (usernameInvalid) R.string.auth_username_invalid
+                                            else R.string.auth_username_helper
+                                        )
+                                    )
+                                }
                             )
                         } else if (isSignUpMode) {
                             Spacer(modifier = Modifier.height(24.dp))
@@ -687,7 +716,13 @@ private fun AuthScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 label = { Text(stringResource(id = R.string.name_label)) },
                                 singleLine = true,
-                                enabled = firebaseReady && !isLoading
+                                enabled = firebaseReady && !isLoading,
+                                isError = showNameError,
+                                supportingText = {
+                                    if (showNameError) {
+                                        Text(stringResource(R.string.profile_name_required))
+                                    }
+                                }
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             OutlinedTextField(
@@ -696,7 +731,16 @@ private fun AuthScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 label = { Text(stringResource(id = R.string.username_label)) },
                                 singleLine = true,
-                                enabled = firebaseReady && !isLoading
+                                enabled = firebaseReady && !isLoading,
+                                isError = usernameInvalid,
+                                supportingText = {
+                                    Text(
+                                        stringResource(
+                                            if (usernameInvalid) R.string.auth_username_invalid
+                                            else R.string.auth_username_helper
+                                        )
+                                    )
+                                }
                             )
                         }
 
@@ -709,7 +753,15 @@ private fun AuthScreen(
                                 label = { Text(stringResource(id = if (isSignUpMode) R.string.email_label else R.string.email_or_username_label)) },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                                enabled = firebaseReady && !isLoading
+                                enabled = firebaseReady && !isLoading,
+                                isError = showEmailHint,
+                                supportingText = {
+                                    if (isSignUpMode) {
+                                        Text(stringResource(R.string.auth_email_helper))
+                                    } else if (showEmailHint) {
+                                        Text(stringResource(R.string.auth_login_helper))
+                                    }
+                                }
                             )
 
                             Spacer(modifier = Modifier.height(16.dp))
@@ -721,7 +773,10 @@ private fun AuthScreen(
                                 singleLine = true,
                                 visualTransformation = PasswordVisualTransformation(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                                enabled = firebaseReady && !isLoading
+                                enabled = firebaseReady && !isLoading,
+                                supportingText = {
+                                    if (isSignUpMode) Text(stringResource(R.string.auth_password_helper))
+                                }
                             )
 
                             if (isSignUpMode) {
@@ -734,7 +789,13 @@ private fun AuthScreen(
                                     singleLine = true,
                                     visualTransformation = PasswordVisualTransformation(),
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                                    enabled = firebaseReady && !isLoading
+                                    enabled = firebaseReady && !isLoading,
+                                    isError = passwordMismatch,
+                                    supportingText = {
+                                        if (passwordMismatch) {
+                                            Text(stringResource(R.string.auth_password_mismatch))
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -742,9 +803,19 @@ private fun AuthScreen(
                         Spacer(modifier = Modifier.height(24.dp))
                         Button(
                             onClick = if (authFlowMode == AuthActivity.AuthFlowMode.GOOGLE_USERNAME) onGoogleUsernameSubmit else onPrimaryAction,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 50.dp),
                             enabled = firebaseReady && !isLoading
                         ) {
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.size(ButtonDefaults.IconSpacing))
+                            }
                             Text(
                                 stringResource(
                                     id = if (authFlowMode == AuthActivity.AuthFlowMode.GOOGLE_USERNAME) {
@@ -762,29 +833,30 @@ private fun AuthScreen(
                             Spacer(modifier = Modifier.height(12.dp))
                             OutlinedButton(
                                 onClick = onGoogleSignIn,
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 50.dp),
                                 enabled = firebaseReady && !isLoading
                             ) {
                                 Text(stringResource(id = R.string.continue_with_google))
                             }
                         }
 
-                        if (isLoading) {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            CircularProgressIndicator(
-                                color = MaterialTheme.colorScheme.primary,
-                                strokeWidth = 3.dp
-                            )
-                        }
-
                         if (!verificationMessage.isNullOrBlank()) {
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = verificationMessage,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodyMedium,
-                                textAlign = TextAlign.Center
-                            )
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                shape = MaterialTheme.shapes.medium,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = verificationMessage,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(14.dp)
+                                )
+                            }
 
                             Spacer(modifier = Modifier.height(12.dp))
                             OutlinedButton(

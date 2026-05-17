@@ -2,6 +2,7 @@ package com.example.fixd
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -9,6 +10,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.core.graphics.ColorUtils
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -51,16 +53,30 @@ fun FixdComposeTheme(content: @Composable () -> Unit) {
     }
 
     val shapes = Shapes(
-        extraSmall = RoundedCornerShape(14.dp),
-        small = RoundedCornerShape(18.dp),
-        medium = RoundedCornerShape(24.dp),
-        large = RoundedCornerShape(30.dp),
-        extraLarge = RoundedCornerShape(36.dp)
+        extraSmall = RoundedCornerShape(10.dp),
+        small = RoundedCornerShape(14.dp),
+        medium = RoundedCornerShape(18.dp),
+        large = RoundedCornerShape(24.dp),
+        extraLarge = RoundedCornerShape(28.dp)
+    )
+
+    val baseTypography = Typography()
+    val typography = Typography(
+        displayLarge = baseTypography.displayLarge.copy(fontWeight = FontWeight.Bold),
+        displayMedium = baseTypography.displayMedium.copy(fontWeight = FontWeight.Bold),
+        displaySmall = baseTypography.displaySmall.copy(fontWeight = FontWeight.Bold),
+        headlineLarge = baseTypography.headlineLarge.copy(fontWeight = FontWeight.Bold),
+        headlineMedium = baseTypography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+        headlineSmall = baseTypography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+        titleLarge = baseTypography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+        titleMedium = baseTypography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+        titleSmall = baseTypography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
     )
 
     MaterialTheme(
         colorScheme = scheme,
         shapes = shapes,
+        typography = typography,
         content = content
     )
 }

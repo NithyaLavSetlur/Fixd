@@ -1,0 +1,9 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_bg_orchid" />
+    <item
+        android:bottom="14dp"
+        android:drawable="@drawable/ic_fixd_panda_logo"
+        android:left="14dp"
+        android:right="14dp"
+        android:top="14dp" />
+</layer-list>

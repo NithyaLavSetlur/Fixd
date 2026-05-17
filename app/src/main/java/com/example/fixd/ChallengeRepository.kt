@@ -100,7 +100,13 @@ data class ChallengeBadge(
 
 data class ChallengeDisplaySettings(
     val equippedSceneryId: String = "sunny_meadow",
-    val equippedAccessoryIds: List<String> = emptyList()
+    val equippedAccessoryIds: List<String> = emptyList(),
+    val scenePlacements: Map<String, ChallengeScenePlacement> = emptyMap()
+)
+
+data class ChallengeScenePlacement(
+    val x: Float = 0.5f,
+    val y: Float = 0.5f
 )
 
 data class ChallengeSnapshot(
@@ -206,11 +212,11 @@ object ChallengeGameEngine {
     )
 
     fun xpForEffort(effort: Int): Int = when (effort) {
-        1 -> 15
-        2 -> 30
-        3 -> 55
-        4 -> 85
-        else -> 120
+        1 -> 5
+        2 -> 10
+        3 -> 18
+        4 -> 28
+        else -> 40
     }
 
     fun effortLabelRes(effort: Int): Int = when (effort) {
@@ -318,7 +324,9 @@ object ChallengeGameEngine {
         }
     }
 
-    private fun xpRequiredForNextLevel(level: Int): Int = 180 + ((level - 1) * 70)
+    private fun xpRequiredForNextLevel(level: Int): Int {
+        return 450 + ((level - 1) * 175) + ((level - 1) * (level - 1) * 25)
+    }
 }
 
 data class ChallengeLevelStatus(
@@ -413,25 +421,29 @@ object ChallengeRepository {
 
                 val loadedTasks = taskSnapshot.documents.map { doc ->
                     val effort = (doc.getLong("effort") ?: 2L).toInt()
+                    val currentXpReward = ChallengeGameEngine.xpForEffort(effort)
                     ChallengeTask(
                         id = doc.id,
                         groupId = doc.getString("groupId").orEmpty(),
                         title = doc.getString("title").orEmpty(),
                         note = doc.getString("note").orEmpty(),
                         effort = effort,
-                        xpReward = (doc.getLong("xpReward") ?: ChallengeGameEngine.xpForEffort(effort).toLong()).toInt(),
+                        xpReward = currentXpReward,
                         activeDays = (doc.get("activeDays") as? List<*>)?.mapNotNull { (it as? Long)?.toInt() } ?: listOf(2, 3, 4, 5, 6),
                         createdAt = doc.getLong("createdAt") ?: 0L
                     )
                 }.sortedBy { it.createdAt }
+                val taskRewardsById = loadedTasks.associate { it.id to it.xpReward }
 
                 val loadedCompletions = completionSnapshot.documents.map { doc ->
+                    val storedXpReward = (doc.getLong("xpReward") ?: 0L).toInt()
                     ChallengeCompletion(
                         id = doc.id,
                         taskId = doc.getString("taskId").orEmpty(),
                         dayKey = doc.getString("dayKey").orEmpty(),
                         completedAt = doc.getLong("completedAt") ?: 0L,
-                        xpReward = (doc.getLong("xpReward") ?: 0L).toInt()
+                        xpReward = taskRewardsById[doc.getString("taskId").orEmpty()]
+                            ?: storedXpReward.coerceAtMost(ChallengeGameEngine.xpForEffort(2))
                     )
                 }.sortedByDescending { it.completedAt }
 
@@ -481,7 +493,8 @@ object ChallengeRepository {
                         friendGroups = loadedFriendGroups,
                         displaySettings = ChallengeDisplaySettings(
                             equippedSceneryId = userSnapshot.getString("challengeEquippedSceneryId") ?: "sunny_meadow",
-                            equippedAccessoryIds = (userSnapshot.get("challengeEquippedAccessoryIds") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+                            equippedAccessoryIds = (userSnapshot.get("challengeEquippedAccessoryIds") as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
+                            scenePlacements = readScenePlacements(userSnapshot.get("challengeScenePlacements"))
                         )
                     )
                 )
@@ -585,14 +598,29 @@ object ChallengeRepository {
         onSuccess: (ChallengeCompletion) -> Unit,
         onFailure: (Exception) -> Unit
     ) {
-        val dayKey = ChallengeGameEngine.currentDayKey()
+        saveCompletionForDay(
+            userId = userId,
+            task = task,
+            dayKey = ChallengeGameEngine.currentDayKey(),
+            onSuccess = onSuccess,
+            onFailure = onFailure
+        )
+    }
+
+    fun saveCompletionForDay(
+        userId: String,
+        task: ChallengeTask,
+        dayKey: String,
+        onSuccess: (ChallengeCompletion) -> Unit,
+        onFailure: (Exception) -> Unit
+    ) {
         val document = completions(userId).document("${task.id}_$dayKey")
         val completion = ChallengeCompletion(
             id = document.id,
             taskId = task.id,
             dayKey = dayKey,
             completedAt = System.currentTimeMillis(),
-            xpReward = task.xpReward
+            xpReward = ChallengeGameEngine.xpForEffort(task.effort)
         )
         document.set(
             mapOf(
@@ -623,16 +651,22 @@ object ChallengeRepository {
         onSuccess: () -> Unit,
         onFailure: (Exception) -> Unit
     ) {
-        unlocks(userId).document(figureId)
-            .set(
-                mapOf(
-                    "figureId" to figureId,
-                    "unlockedAt" to System.currentTimeMillis(),
-                    "figureLevel" to 1,
-                    "lastUpgradeAt" to 0L,
-                    "nonce" to UUID.randomUUID().toString()
+        val document = unlocks(userId).document(figureId)
+        firestore.runTransaction { transaction ->
+            val existing = transaction.get(document)
+            if (!existing.exists()) {
+                transaction.set(
+                    document,
+                    mapOf(
+                        "figureId" to figureId,
+                        "unlockedAt" to System.currentTimeMillis(),
+                        "figureLevel" to 1,
+                        "lastUpgradeAt" to 0L,
+                        "nonce" to UUID.randomUUID().toString()
+                    )
                 )
-            )
+            }
+        }
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener(onFailure)
     }
@@ -643,14 +677,20 @@ object ChallengeRepository {
         onSuccess: () -> Unit,
         onFailure: (Exception) -> Unit
     ) {
-        sceneryUnlocks(userId).document(sceneryId)
-            .set(
-                mapOf(
-                    "sceneryId" to sceneryId,
-                    "unlockedAt" to System.currentTimeMillis(),
-                    "nonce" to UUID.randomUUID().toString()
+        val document = sceneryUnlocks(userId).document(sceneryId)
+        firestore.runTransaction { transaction ->
+            val existing = transaction.get(document)
+            if (!existing.exists()) {
+                transaction.set(
+                    document,
+                    mapOf(
+                        "sceneryId" to sceneryId,
+                        "unlockedAt" to System.currentTimeMillis(),
+                        "nonce" to UUID.randomUUID().toString()
+                    )
                 )
-            )
+            }
+        }
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener(onFailure)
     }
@@ -661,14 +701,20 @@ object ChallengeRepository {
         onSuccess: () -> Unit,
         onFailure: (Exception) -> Unit
     ) {
-        accessoryUnlocks(userId).document(accessoryId)
-            .set(
-                mapOf(
-                    "accessoryId" to accessoryId,
-                    "unlockedAt" to System.currentTimeMillis(),
-                    "nonce" to UUID.randomUUID().toString()
+        val document = accessoryUnlocks(userId).document(accessoryId)
+        firestore.runTransaction { transaction ->
+            val existing = transaction.get(document)
+            if (!existing.exists()) {
+                transaction.set(
+                    document,
+                    mapOf(
+                        "accessoryId" to accessoryId,
+                        "unlockedAt" to System.currentTimeMillis(),
+                        "nonce" to UUID.randomUUID().toString()
+                    )
                 )
-            )
+            }
+        }
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener(onFailure)
     }
@@ -680,13 +726,24 @@ object ChallengeRepository {
         onSuccess: () -> Unit,
         onFailure: (Exception) -> Unit
     ) {
-        unlocks(userId).document(figureId)
-            .update(
-                mapOf(
-                    "figureLevel" to newLevel,
-                    "lastUpgradeAt" to System.currentTimeMillis()
+        val safeNewLevel = newLevel.coerceIn(1, ChallengeGameEngine.maxFigureLevel())
+        val document = unlocks(userId).document(figureId)
+        firestore.runTransaction { transaction ->
+            val existing = transaction.get(document)
+            if (!existing.exists()) {
+                throw IllegalStateException("Unlock the figure before upgrading it.")
+            }
+            val currentLevel = (existing.getLong("figureLevel") ?: 1L).toInt()
+            if (safeNewLevel > currentLevel) {
+                transaction.update(
+                    document,
+                    mapOf(
+                        "figureLevel" to safeNewLevel,
+                        "lastUpgradeAt" to System.currentTimeMillis()
+                    )
                 )
-            )
+            }
+        }
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener(onFailure)
     }
@@ -713,6 +770,35 @@ object ChallengeRepository {
             .set(mapOf("challengeEquippedAccessoryIds" to accessoryIds), com.google.firebase.firestore.SetOptions.merge())
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener(onFailure)
+    }
+
+    fun saveScenePlacements(
+        userId: String,
+        placements: Map<String, ChallengeScenePlacement>,
+        onSuccess: () -> Unit,
+        onFailure: (Exception) -> Unit
+    ) {
+        val placementMap = placements.mapValues { (_, placement) ->
+            mapOf(
+                "x" to placement.x.coerceIn(0f, 1f),
+                "y" to placement.y.coerceIn(0f, 1f)
+            )
+        }
+        userDocument(userId)
+            .set(mapOf("challengeScenePlacements" to placementMap), com.google.firebase.firestore.SetOptions.merge())
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener(onFailure)
+    }
+
+    private fun readScenePlacements(raw: Any?): Map<String, ChallengeScenePlacement> {
+        val map = raw as? Map<*, *> ?: return emptyMap()
+        return map.mapNotNull { (key, value) ->
+            val id = key as? String ?: return@mapNotNull null
+            val placementValues = value as? Map<*, *> ?: return@mapNotNull null
+            val x = (placementValues["x"] as? Number)?.toFloat() ?: return@mapNotNull null
+            val y = (placementValues["y"] as? Number)?.toFloat() ?: return@mapNotNull null
+            id to ChallengeScenePlacement(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f))
+        }.toMap()
     }
 
     fun searchUserByUsername(

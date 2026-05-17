@@ -1,41 +1,28 @@
 package com.example.fixd
 
-import android.app.PendingIntent
-import android.appwidget.AppWidgetManager
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.view.View
 import android.widget.RemoteViews
-import androidx.core.graphics.ColorUtils
 
 object ChallengeWidgetUpdater {
     fun updateAll(context: Context) {
-        val manager = AppWidgetManager.getInstance(context)
-        val ids = manager.getAppWidgetIds(ComponentName(context, ChallengeWidgetProvider::class.java))
-        if (ids.isEmpty()) return
-        val views = buildRemoteViews(context)
-        ids.forEach { manager.updateAppWidget(it, views) }
+        WidgetSupport.updateAll(context, ChallengeWidgetProvider::class.java, ::buildRemoteViews)
     }
 
     fun buildRemoteViews(context: Context): RemoteViews {
         val summary = ChallengeWidgetCache.get(context)
-        val palette = ThemePaletteManager.currentPalette(context)
-        val widgetSurface = ColorUtils.blendARGB(palette.surface, palette.card, 0.55f)
-        val titleColor = ThemePaletteManager.readableColorOn(widgetSurface, palette.primary, palette)
-        val bodyColor = ThemePaletteManager.readableTextColorOn(widgetSurface, palette)
-        val mutedColor = ColorUtils.blendARGB(bodyColor, widgetSurface, 0.45f)
+        val colors = WidgetSupport.colors(context)
         val views = RemoteViews(context.packageName, R.layout.widget_challenge_board)
 
-        views.setTextColor(R.id.challengeWidgetTitle, titleColor)
-        views.setTextColor(R.id.challengeWidgetLevel, bodyColor)
-        views.setTextColor(R.id.challengeWidgetXp, mutedColor)
-        views.setTextColor(R.id.challengeWidgetStreak, mutedColor)
-        views.setTextColor(R.id.challengeWidgetMissionsLabel, mutedColor)
+        views.setTextColor(R.id.challengeWidgetTitle, colors.title)
+        views.setTextColor(R.id.challengeWidgetLevel, colors.body)
+        views.setTextColor(R.id.challengeWidgetXp, colors.muted)
+        views.setTextColor(R.id.challengeWidgetStreak, colors.muted)
+        views.setTextColor(R.id.challengeWidgetMissionsLabel, colors.muted)
         views.setTextColor(R.id.challengeWidgetOpenButton, android.graphics.Color.WHITE)
-        views.setTextColor(R.id.challengeWidgetMissionOne, bodyColor)
-        views.setTextColor(R.id.challengeWidgetMissionTwo, bodyColor)
-        views.setTextColor(R.id.challengeWidgetMissionThree, bodyColor)
+        views.setTextColor(R.id.challengeWidgetMissionOne, colors.body)
+        views.setTextColor(R.id.challengeWidgetMissionTwo, colors.body)
+        views.setTextColor(R.id.challengeWidgetMissionThree, colors.body)
         views.setTextViewText(R.id.challengeWidgetLevel, context.getString(R.string.challenge_widget_level, summary.level))
         views.setTextViewText(
             R.id.challengeWidgetXp,
@@ -57,7 +44,7 @@ object ChallengeWidgetUpdater {
                 views.setViewVisibility(viewId, if (index == 0) View.VISIBLE else View.GONE)
                 if (index == 0) {
                     views.setTextViewText(viewId, context.getString(R.string.challenge_widget_empty))
-                    views.setTextColor(viewId, mutedColor)
+                    views.setTextColor(viewId, colors.muted)
                 }
             } else {
                 views.setViewVisibility(viewId, View.VISIBLE)
@@ -65,21 +52,11 @@ object ChallengeWidgetUpdater {
                     viewId,
                     context.getString(R.string.challenge_widget_mission_line, mission.icon, mission.title, mission.xp)
                 )
-                views.setTextColor(viewId, bodyColor)
+                views.setTextColor(viewId, colors.body)
             }
         }
 
-        val openBoardIntent = Intent(context, DashboardActivity::class.java).apply {
-            putExtra(DashboardActivity.EXTRA_OPEN_AREA, ProblemArea.CHALLENGES.name)
-            putExtra(DashboardActivity.EXTRA_OPEN_CHALLENGE_PAGE, ChallengePage.BOARD.name)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            6010,
-            openBoardIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val pendingIntent = WidgetSupport.dashboardPendingIntent(context, 6010, ProblemArea.CHALLENGES, ChallengePage.BOARD)
         views.setOnClickPendingIntent(R.id.challengeWidgetRoot, pendingIntent)
         views.setOnClickPendingIntent(R.id.challengeWidgetOpenButton, pendingIntent)
         return views

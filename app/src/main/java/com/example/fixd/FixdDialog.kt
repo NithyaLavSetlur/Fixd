@@ -21,6 +21,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -35,6 +38,8 @@ fun FixdDialog(
     secondaryAction: @Composable (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
+    val closeDescription = stringResource(R.string.dialog_close)
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -71,6 +76,9 @@ fun FixdDialog(
                             onClick = onDismiss,
                             modifier = Modifier
                                 .size(36.dp)
+                                .semantics {
+                                    contentDescription = closeDescription
+                                }
                                 .background(
                                     MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
                                     CircleShape

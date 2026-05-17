@@ -13,11 +13,15 @@ import androidx.core.content.ContextCompat
 
 class WakeFollowUpReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        NotificationHelper.ensureChannels(context)
         val userId = intent.getStringExtra(EXTRA_USER_ID).orEmpty()
         val submissionId = intent.getStringExtra(EXTRA_SUBMISSION_ID).orEmpty()
         val attempt = intent.getIntExtra(EXTRA_ATTEMPT, WakeFollowUpScheduler.FIRST_FOLLOW_UP_ATTEMPT)
         if (userId.isBlank() || submissionId.isBlank()) return
+        if (!UserPreferences.isProblemDisplayed(context, ProblemArea.WAKE_UP)) {
+            WakeFollowUpScheduler.cancel(context, userId, submissionId)
+            return
+        }
+        NotificationHelper.ensureChannels(context)
 
         val openAppIntent = Intent(context, DashboardActivity::class.java).apply {
             putExtra(DashboardActivity.EXTRA_OPEN_AREA, ProblemArea.WAKE_UP.name)

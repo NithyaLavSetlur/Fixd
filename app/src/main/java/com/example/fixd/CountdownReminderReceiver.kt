@@ -13,10 +13,14 @@ import androidx.core.content.ContextCompat
 
 class CountdownReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        NotificationHelper.ensureChannels(context)
         val countdownId = intent.getStringExtra(EXTRA_COUNTDOWN_ID).orEmpty()
         val title = intent.getStringExtra(EXTRA_COUNTDOWN_TITLE).orEmpty()
         if (countdownId.isBlank() || title.isBlank()) return
+        if (!UserPreferences.isProblemDisplayed(context, ProblemArea.COUNTDOWN)) {
+            CountdownReminderScheduler.cancel(context, countdownId)
+            return
+        }
+        NotificationHelper.ensureChannels(context)
 
         val openIntent = Intent(context, DashboardActivity::class.java).apply {
             putExtra(DashboardActivity.EXTRA_OPEN_AREA, ProblemArea.COUNTDOWN.name)

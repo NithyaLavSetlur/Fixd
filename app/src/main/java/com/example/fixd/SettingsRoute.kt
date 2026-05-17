@@ -30,6 +30,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,8 +64,11 @@ fun SettingsRoute(
     val auth = remember { FirebaseAuth.getInstance() }
     var currentAppearance by remember { mutableStateOf(UserAppearanceSettings()) }
     var currentProfile by remember { mutableStateOf(UserProfile()) }
-    var pendingSeedColor by remember { mutableStateOf(ThemePaletteManager.DEFAULT_SEED_COLOR) }
+    var pendingSeedColor by remember { mutableIntStateOf(ThemePaletteManager.DEFAULT_SEED_COLOR) }
     var themeMode by remember { mutableStateOf(UserPreferences.THEME_SYSTEM) }
+    var launcherIconId by remember { mutableStateOf(UserPreferences.getLauncherIconId(context)) }
+    var tileSwipeLeftAction by remember { mutableStateOf(UserPreferences.getTileSwipeLeftAction(context)) }
+    var tileSwipeRightAction by remember { mutableStateOf(UserPreferences.getTileSwipeRightAction(context)) }
     val pendingTabOrder = remember { mutableStateListOf<ProblemArea>() }
     var showTabOrderEmpty by remember { mutableStateOf(false) }
 
@@ -157,6 +161,24 @@ fun SettingsRoute(
         )
     }
 
+    fun updateTileSwipeLeftAction(action: String) {
+        tileSwipeLeftAction = action
+        UserPreferences.saveTileSwipeLeftAction(context, action)
+        toast(context, context.getString(R.string.settings_tile_swipe_saved))
+    }
+
+    fun updateTileSwipeRightAction(action: String) {
+        tileSwipeRightAction = action
+        UserPreferences.saveTileSwipeRightAction(context, action)
+        toast(context, context.getString(R.string.settings_tile_swipe_saved))
+    }
+
+    fun updateLauncherIcon(iconId: String) {
+        launcherIconId = LauncherIconManager.optionFor(iconId).id
+        LauncherIconManager.apply(context, launcherIconId)
+        toast(context, context.getString(R.string.settings_launcher_icon_saved))
+    }
+
     val palette = ThemePaletteManager.paletteFor(
         currentAppearance.copy(themeSeedColor = pendingSeedColor),
         UserPreferences.isDarkMode(context)
@@ -165,7 +187,7 @@ fun SettingsRoute(
     LazyColumn(
         modifier = Modifier
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 24.dp),
+            .padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         item { Spacer(modifier = Modifier.height(18.dp)) }
@@ -179,6 +201,17 @@ fun SettingsRoute(
                 }
                 SettingsThemeOption(stringResource(R.string.settings_theme_dark), themeMode == UserPreferences.THEME_DARK) {
                     updateThemeMode(UserPreferences.THEME_DARK)
+                }
+            }
+        }
+        item {
+            SettingsCard(stringResource(R.string.settings_launcher_icon_title), stringResource(R.string.settings_launcher_icon_body)) {
+                LauncherIconManager.options.forEach { option ->
+                    SettingsLauncherIconOption(
+                        option = option,
+                        selected = launcherIconId == option.id,
+                        onClick = { updateLauncherIcon(option.id) }
+                    )
                 }
             }
         }
@@ -249,6 +282,63 @@ fun SettingsRoute(
                 ) {
                     Text(stringResource(id = R.string.settings_tab_order_save))
                 }
+            }
+        }
+        item {
+            SettingsCard(stringResource(R.string.settings_tile_swipe_title), stringResource(R.string.settings_tile_swipe_body)) {
+                Text(
+                    text = stringResource(R.string.settings_tile_swipe_left),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                SettingsSwipeActionOption(
+                    label = stringResource(R.string.settings_tile_swipe_action_next),
+                    selected = tileSwipeLeftAction == UserPreferences.TILE_SWIPE_NEXT,
+                    onClick = { updateTileSwipeLeftAction(UserPreferences.TILE_SWIPE_NEXT) }
+                )
+                SettingsSwipeActionOption(
+                    label = stringResource(R.string.settings_tile_swipe_action_previous),
+                    selected = tileSwipeLeftAction == UserPreferences.TILE_SWIPE_PREVIOUS,
+                    onClick = { updateTileSwipeLeftAction(UserPreferences.TILE_SWIPE_PREVIOUS) }
+                )
+                SettingsSwipeActionOption(
+                    label = stringResource(R.string.settings_tile_swipe_action_open),
+                    selected = tileSwipeLeftAction == UserPreferences.TILE_SWIPE_OPEN,
+                    onClick = { updateTileSwipeLeftAction(UserPreferences.TILE_SWIPE_OPEN) }
+                )
+                SettingsSwipeActionOption(
+                    label = stringResource(R.string.settings_tile_swipe_action_none),
+                    selected = tileSwipeLeftAction == UserPreferences.TILE_SWIPE_NONE,
+                    onClick = { updateTileSwipeLeftAction(UserPreferences.TILE_SWIPE_NONE) }
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = stringResource(R.string.settings_tile_swipe_right),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                SettingsSwipeActionOption(
+                    label = stringResource(R.string.settings_tile_swipe_action_previous),
+                    selected = tileSwipeRightAction == UserPreferences.TILE_SWIPE_PREVIOUS,
+                    onClick = { updateTileSwipeRightAction(UserPreferences.TILE_SWIPE_PREVIOUS) }
+                )
+                SettingsSwipeActionOption(
+                    label = stringResource(R.string.settings_tile_swipe_action_next),
+                    selected = tileSwipeRightAction == UserPreferences.TILE_SWIPE_NEXT,
+                    onClick = { updateTileSwipeRightAction(UserPreferences.TILE_SWIPE_NEXT) }
+                )
+                SettingsSwipeActionOption(
+                    label = stringResource(R.string.settings_tile_swipe_action_open),
+                    selected = tileSwipeRightAction == UserPreferences.TILE_SWIPE_OPEN,
+                    onClick = { updateTileSwipeRightAction(UserPreferences.TILE_SWIPE_OPEN) }
+                )
+                SettingsSwipeActionOption(
+                    label = stringResource(R.string.settings_tile_swipe_action_none),
+                    selected = tileSwipeRightAction == UserPreferences.TILE_SWIPE_NONE,
+                    onClick = { updateTileSwipeRightAction(UserPreferences.TILE_SWIPE_NONE) }
+                )
             }
         }
         item {
@@ -324,6 +414,46 @@ private fun SettingsThemeOption(label: String, selected: Boolean, onClick: () ->
 }
 
 @Composable
+private fun SettingsLauncherIconOption(option: LauncherIconOption, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Spacer(modifier = Modifier.size(8.dp))
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .background(Color(option.previewColor), RoundedCornerShape(10.dp))
+        )
+        Spacer(modifier = Modifier.size(12.dp))
+        Text(
+            text = stringResource(option.labelRes),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
+private fun SettingsSwipeActionOption(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(text = label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
 private fun SettingsPaletteSwatch(color: Int, modifier: Modifier = Modifier) {
     Box(modifier = modifier.height(46.dp).background(Color(color), RoundedCornerShape(20.dp)))
 }
@@ -354,7 +484,7 @@ private fun ComposeColorWheel(
 
     Canvas(
         modifier = modifier
-            .size(240.dp)
+            .size(192.dp)
             .onSizeChanged { size = it }
             .pointerInput(Unit) {
                 detectDragGestures(

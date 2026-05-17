@@ -272,7 +272,7 @@ fun ProfileRoute(
     LazyColumn(
         modifier = Modifier
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 24.dp),
+            .padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         item { Spacer(modifier = Modifier.height(18.dp)) }

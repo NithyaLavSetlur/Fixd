@@ -96,7 +96,7 @@ private fun SocialQuickSettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background.copy(alpha = 0.35f))
-            .padding(24.dp),
+            .padding(horizontal = 16.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.Center
     ) {
         Card(

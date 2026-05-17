@@ -8,6 +8,7 @@ import androidx.core.content.ContextCompat
 
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (!UserPreferences.isProblemDisplayed(context, ProblemArea.WAKE_UP)) return
         NotificationHelper.ensureChannels(context)
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val wakeLock = powerManager.newWakeLock(
@@ -19,6 +20,7 @@ class AlarmReceiver : BroadcastReceiver() {
         val alarmName = intent.getStringExtra(EXTRA_ALARM_NAME).orEmpty()
         val alarmHour = intent.getIntExtra(EXTRA_ALARM_HOUR, 0)
         val alarmMinute = intent.getIntExtra(EXTRA_ALARM_MINUTE, 0)
+        val alarmKind = intent.getStringExtra(EXTRA_ALARM_KIND).orEmpty()
         val triggeredAt = System.currentTimeMillis()
         val serviceIntent = Intent(context, AlarmRingingService::class.java).apply {
             action = AlarmRingingService.ACTION_RESUME
@@ -26,6 +28,7 @@ class AlarmReceiver : BroadcastReceiver() {
             putExtra(EXTRA_ALARM_NAME, alarmName)
             putExtra(EXTRA_ALARM_HOUR, alarmHour)
             putExtra(EXTRA_ALARM_MINUTE, alarmMinute)
+            putExtra(EXTRA_ALARM_KIND, alarmKind)
             putExtra(EXTRA_TRIGGERED_AT, triggeredAt)
         }
         ContextCompat.startForegroundService(context, serviceIntent)
@@ -35,6 +38,7 @@ class AlarmReceiver : BroadcastReceiver() {
             putExtra(EXTRA_ALARM_NAME, alarmName)
             putExtra(EXTRA_ALARM_HOUR, alarmHour)
             putExtra(EXTRA_ALARM_MINUTE, alarmMinute)
+            putExtra(EXTRA_ALARM_KIND, alarmKind)
             putExtra(EXTRA_TRIGGERED_AT, triggeredAt)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
@@ -46,6 +50,7 @@ class AlarmReceiver : BroadcastReceiver() {
         const val EXTRA_ALARM_NAME = "alarm_name"
         const val EXTRA_ALARM_HOUR = "alarm_hour"
         const val EXTRA_ALARM_MINUTE = "alarm_minute"
+        const val EXTRA_ALARM_KIND = "alarm_kind"
         const val EXTRA_TRIGGERED_AT = "triggered_at"
     }
 }

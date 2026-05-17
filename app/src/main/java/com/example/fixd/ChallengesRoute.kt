@@ -1,12 +1,17 @@
-@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@file:OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class
+)
 
 package com.example.fixd
 
 import android.content.Context
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +34,8 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
@@ -40,6 +47,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -100,6 +108,66 @@ private data class ChallengeTaskStats(
             completions.count { it.completedAt in start until end }
         }.reversed()
     }
+
+    fun currentWeekCompletionPercent(): Int {
+        val assignedDays = currentWeekAssignedDayKeys(includeToday = true)
+        if (assignedDays.isEmpty()) return 0
+        val completedDayKeys = completions.map { it.dayKey }.toSet()
+        val completedAssignedDays = assignedDays.count { it in completedDayKeys }
+        return ((completedAssignedDays * 100f) / assignedDays.size).toInt()
+    }
+
+    fun isActiveToday(): Boolean {
+        return ChallengeGameEngine.currentDayOfWeek() in task.activeDays
+    }
+
+    fun hasMissedThisWeek(): Boolean {
+        val completedDayKeys = completions.map { it.dayKey }.toSet()
+        return currentWeekAssignedDayKeys(includeToday = false).any { it !in completedDayKeys }
+    }
+
+    private fun currentWeekAssignedDayKeys(includeToday: Boolean): List<String> {
+        val currentIndex = currentWeekIndex()
+        return ChallengeGameEngine.weekDaySequenceStartingSaturday()
+            .mapIndexedNotNull { index, (dayOfWeek, dayKey) ->
+                val isInRange = if (includeToday) index <= currentIndex else index < currentIndex
+                dayKey.takeIf { isInRange && dayOfWeek in task.activeDays }
+            }
+    }
+
+    private fun currentWeekIndex(): Int {
+        return listOf(
+            Calendar.SATURDAY,
+            Calendar.SUNDAY,
+            Calendar.MONDAY,
+            Calendar.TUESDAY,
+            Calendar.WEDNESDAY,
+            Calendar.THURSDAY,
+            Calendar.FRIDAY
+        ).indexOf(ChallengeGameEngine.currentDayOfWeek()).coerceAtLeast(0)
+    }
+}
+
+private enum class HistoryCompletionFilter {
+    ALL,
+    ZERO,
+    LOW,
+    HIGH,
+    COMPLETE
+}
+
+private enum class HistoryScheduleFilter {
+    ALL,
+    ACTIVE_TODAY,
+    MISSED_THIS_WEEK,
+    NEVER_COMPLETED
+}
+
+private enum class HistorySortMode {
+    MOST_COMPLETED,
+    LOWEST_COMPLETION,
+    RECENT,
+    TITLE
 }
 
 private data class OwnedFigureUi(
@@ -152,9 +220,17 @@ fun ChallengesRoute(
     var editingGroup by remember { mutableStateOf<ChallengeGroup?>(null) }
     var editingTask by remember { mutableStateOf<ChallengeTask?>(null) }
     var expandedGroupIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var selectedShopTab by remember { mutableStateOf(0) }
+    var boardGroupFilterIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var boardXpFilters by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var historyGroupFilterId by remember { mutableStateOf<String?>(null) }
+    var historyEffortFilter by remember { mutableStateOf<Int?>(null) }
+    var historyCompletionFilter by remember { mutableStateOf(HistoryCompletionFilter.ALL) }
+    var historyScheduleFilter by remember { mutableStateOf(HistoryScheduleFilter.ALL) }
+    var historySortMode by remember { mutableStateOf(HistorySortMode.MOST_COMPLETED) }
+    var historySearchQuery by remember { mutableStateOf("") }
+    var selectedShopTab by remember { mutableIntStateOf(0) }
     var currentUserPublic by remember(userId) { mutableStateOf(cachedSession?.currentUserPublic) }
-    var selectedFriendsTab by remember { mutableStateOf(0) }
+    var selectedFriendsTab by remember { mutableIntStateOf(0) }
     var friendGroupName by remember { mutableStateOf("") }
     var friendSearchInput by remember { mutableStateOf("") }
     var foundFriend by remember { mutableStateOf<ChallengeUserPublic?>(null) }
@@ -164,12 +240,30 @@ fun ChallengesRoute(
     var friendsLoading by remember { mutableStateOf(false) }
     var selectedFriendGroupId by remember { mutableStateOf<String?>(null) }
     var addFriendsGroup by remember { mutableStateOf<ChallengeFriendGroup?>(null) }
+    var sceneDraftPlacements by remember(userId) { mutableStateOf<Map<String, ChallengeScenePlacement>>(emptyMap()) }
 
     fun persistCache() {
         val safeUserId = userId ?: return
         ChallengeRouteMemoryCache.session = ChallengeSessionCache(
             userId = safeUserId,
             snapshot = snapshot,
+            currentUserPublic = currentUserPublic,
+            incomingFriendRequests = incomingFriendRequests,
+            acceptedFriends = acceptedFriends,
+            friendLeaderboards = friendLeaderboards
+        )
+    }
+
+    fun applySnapshot(next: ChallengeSnapshot) {
+        snapshot = next
+        ChallengeWidgetCache.save(context, ChallengeWidgetCache.fromSnapshot(next))
+        ChallengeWidgetUpdater.updateAll(context)
+        ChallengeFigureWidgetUpdater.updateAll(context)
+        ChallengeBadgeWidgetUpdater.updateAll(context)
+        val safeUserId = userId ?: return
+        ChallengeRouteMemoryCache.session = ChallengeSessionCache(
+            userId = safeUserId,
+            snapshot = next,
             currentUserPublic = currentUserPublic,
             incomingFriendRequests = incomingFriendRequests,
             acceptedFriends = acceptedFriends,
@@ -189,6 +283,7 @@ fun ChallengesRoute(
                 ChallengeWidgetUpdater.updateAll(context)
                 ChallengeFigureWidgetUpdater.updateAll(context)
                 ChallengeBadgeWidgetUpdater.updateAll(context)
+                ChallengeEndOfDayReminderScheduler.scheduleNext(context)
                 errorText = null
                 loading = false
                 persistCache()
@@ -240,12 +335,18 @@ fun ChallengesRoute(
     val tasksByGroupId = remember(snapshot.tasks) { snapshot.tasks.groupBy { it.groupId } }
     val todayDayOfWeek = remember(snapshot.tasks, snapshot.completions) { ChallengeGameEngine.currentDayOfWeek() }
     val todayDayKey = remember(snapshot.completions) { ChallengeGameEngine.currentDayKey() }
+    var skippedTodayTaskIds by remember(userId, todayDayKey) {
+        mutableStateOf(
+            userId?.let { UserPreferences.getSkippedChallengeTasksForDay(context, it, todayDayKey) }.orEmpty()
+        )
+    }
     val completionsByTask = remember(snapshot.completions) { snapshot.completions.groupBy { it.taskId } }
     val todayCompletionsByTask = remember(snapshot.completions) {
         snapshot.completions.filter { it.dayKey == todayDayKey }.associateBy { it.taskId }
     }
-    val activeMissions = remember(snapshot.tasks, todayCompletionsByTask) {
+    val activeMissions = remember(snapshot.tasks, todayCompletionsByTask, skippedTodayTaskIds) {
         snapshot.tasks.filter { todayDayOfWeek in it.activeDays }
+            .filterNot { it.id in skippedTodayTaskIds }
             .map { task ->
                 ChallengeTaskUi(
                     task = task,
@@ -255,6 +356,19 @@ fun ChallengesRoute(
                 )
             }
             .sortedWith(compareBy<ChallengeTaskUi>({ it.completedToday }, { -it.task.xpReward }, { it.task.title.lowercase() }))
+    }
+    val boardFilterGroups = remember(activeMissions) {
+        activeMissions.mapNotNull { it.group }.distinctBy { it.id }.sortedBy { it.title.lowercase() }
+    }
+    val boardFilterXpRewards = remember(activeMissions) {
+        activeMissions.map { it.task.xpReward }.distinct().sorted()
+    }
+    val filteredActiveMissions = remember(activeMissions, boardGroupFilterIds, boardXpFilters) {
+        activeMissions.filter { mission ->
+            val matchesGroup = boardGroupFilterIds.isEmpty() || mission.task.groupId in boardGroupFilterIds
+            val matchesXp = boardXpFilters.isEmpty() || mission.task.xpReward in boardXpFilters
+            matchesGroup && matchesXp
+        }
     }
     val totalXp = snapshot.completions.sumOf { it.xpReward }
     val levelStatus = remember(totalXp) { ChallengeGameEngine.levelStatus(totalXp) }
@@ -267,6 +381,60 @@ fun ChallengesRoute(
                 completions = completionsByTask[task.id].orEmpty()
             )
         }.sortedByDescending { it.totalCount }
+    }
+    LaunchedEffect(snapshot.groups) {
+        boardGroupFilterIds = boardGroupFilterIds.filterTo(mutableSetOf()) { groupId ->
+            snapshot.groups.any { it.id == groupId }
+        }
+        if (historyGroupFilterId != null && snapshot.groups.none { it.id == historyGroupFilterId }) {
+            historyGroupFilterId = null
+        }
+    }
+    LaunchedEffect(boardFilterXpRewards) {
+        boardXpFilters = boardXpFilters.filterTo(mutableSetOf()) { it in boardFilterXpRewards }
+    }
+    val filteredHistoryStats = remember(
+        historyStats,
+        historyGroupFilterId,
+        historyEffortFilter,
+        historyCompletionFilter,
+        historyScheduleFilter,
+        historySortMode,
+        historySearchQuery
+    ) {
+        val query = historySearchQuery.trim().lowercase()
+        historyStats
+            .filter { stat ->
+                val matchesGroup = historyGroupFilterId == null || stat.task.groupId == historyGroupFilterId
+                val matchesEffort = historyEffortFilter == null || stat.task.effort == historyEffortFilter
+                val percent = stat.currentWeekCompletionPercent()
+                val matchesCompletion = when (historyCompletionFilter) {
+                    HistoryCompletionFilter.ALL -> true
+                    HistoryCompletionFilter.ZERO -> percent == 0
+                    HistoryCompletionFilter.LOW -> percent in 1..49
+                    HistoryCompletionFilter.HIGH -> percent in 50..99
+                    HistoryCompletionFilter.COMPLETE -> percent == 100
+                }
+                val matchesSchedule = when (historyScheduleFilter) {
+                    HistoryScheduleFilter.ALL -> true
+                    HistoryScheduleFilter.ACTIVE_TODAY -> stat.isActiveToday()
+                    HistoryScheduleFilter.MISSED_THIS_WEEK -> stat.hasMissedThisWeek()
+                    HistoryScheduleFilter.NEVER_COMPLETED -> stat.totalCount == 0
+                }
+                val matchesSearch = query.isBlank() ||
+                    stat.task.title.lowercase().contains(query) ||
+                    stat.group?.title?.lowercase()?.contains(query) == true ||
+                    stat.task.note.lowercase().contains(query)
+                matchesGroup && matchesEffort && matchesCompletion && matchesSchedule && matchesSearch
+            }
+            .let { stats ->
+                when (historySortMode) {
+                    HistorySortMode.MOST_COMPLETED -> stats.sortedWith(compareByDescending<ChallengeTaskStats> { it.totalCount }.thenBy { it.task.title.lowercase() })
+                    HistorySortMode.LOWEST_COMPLETION -> stats.sortedWith(compareBy<ChallengeTaskStats> { it.currentWeekCompletionPercent() }.thenByDescending { it.totalCount })
+                    HistorySortMode.RECENT -> stats.sortedWith(compareByDescending<ChallengeTaskStats> { it.lastCompletedAt ?: 0L }.thenBy { it.task.title.lowercase() })
+                    HistorySortMode.TITLE -> stats.sortedBy { it.task.title.lowercase() }
+                }
+            }
     }
     val ownedFigures = remember(snapshot.unlocks) {
         snapshot.unlocks.mapNotNull { unlock ->
@@ -510,26 +678,88 @@ fun ChallengesRoute(
         val safeUserId = userId ?: return
         if (taskUi.completedToday) {
             val completionId = taskUi.todayCompletionId ?: return
+            val previous = snapshot
+            applySnapshot(snapshot.copy(completions = snapshot.completions.filterNot { it.id == completionId }))
             ChallengeRepository.deleteCompletion(
                 userId = safeUserId,
                 completionId = completionId,
                 onSuccess = {
                     toast(context, context.getString(R.string.challenge_completion_removed))
-                    reload()
+                    reload(showSpinner = false)
                 },
-                onFailure = { toast(context, it.localizedMessage ?: context.getString(R.string.firebase_not_ready)) }
+                onFailure = {
+                    applySnapshot(previous)
+                    toast(context, it.localizedMessage ?: context.getString(R.string.firebase_not_ready))
+                }
             )
         } else {
+            val completion = ChallengeCompletion(
+                id = "${taskUi.task.id}_$todayDayKey",
+                taskId = taskUi.task.id,
+                dayKey = todayDayKey,
+                completedAt = System.currentTimeMillis(),
+                xpReward = taskUi.task.xpReward
+            )
+            val previous = snapshot
+            applySnapshot(snapshot.copy(completions = snapshot.completions.filterNot { it.id == completion.id } + completion))
             ChallengeRepository.saveCompletionForToday(
                 userId = safeUserId,
                 task = taskUi.task,
                 onSuccess = {
                     toast(context, context.getString(R.string.challenge_reward_body, taskUi.task.title, taskUi.task.xpReward))
-                    reload()
+                    reload(showSpinner = false)
                 },
-                onFailure = { toast(context, it.localizedMessage ?: context.getString(R.string.firebase_not_ready)) }
+                onFailure = {
+                    applySnapshot(previous)
+                    toast(context, it.localizedMessage ?: context.getString(R.string.firebase_not_ready))
+                }
             )
         }
+    }
+
+    fun skipMissionToday(taskUi: ChallengeTaskUi) {
+        val safeUserId = userId ?: return
+        val updated = skippedTodayTaskIds + taskUi.task.id
+        skippedTodayTaskIds = updated
+        UserPreferences.saveSkippedChallengeTasksForDay(context, safeUserId, todayDayKey, updated)
+        toast(context, context.getString(R.string.challenge_board_wont_do_saved))
+    }
+
+    fun toggleHistoryDay(task: ChallengeTask, status: ChallengeDayStatus) {
+        val safeUserId = userId ?: return
+        when (status.kind) {
+            ChallengeDayStatusKind.COMPLETED -> {
+                val completionId = status.completionId ?: return
+                ChallengeRepository.deleteCompletion(
+                    userId = safeUserId,
+                    completionId = completionId,
+                    onSuccess = {
+                        toast(context, context.getString(R.string.challenge_history_completion_removed))
+                        reload(showSpinner = false)
+                    },
+                    onFailure = { toast(context, it.localizedMessage ?: context.getString(R.string.firebase_not_ready)) }
+                )
+            }
+            ChallengeDayStatusKind.MISSED,
+            ChallengeDayStatusKind.IN_PROGRESS -> {
+                ChallengeRepository.saveCompletionForDay(
+                    userId = safeUserId,
+                    task = task,
+                    dayKey = status.dayKey,
+                    onSuccess = {
+                        toast(context, context.getString(R.string.challenge_history_completion_added))
+                        reload(showSpinner = false)
+                    },
+                    onFailure = { toast(context, it.localizedMessage ?: context.getString(R.string.firebase_not_ready)) }
+                )
+            }
+            ChallengeDayStatusKind.PENDING,
+            ChallengeDayStatusKind.NOT_ASSIGNED -> Unit
+        }
+    }
+
+    LaunchedEffect(snapshot.displaySettings.scenePlacements) {
+        sceneDraftPlacements = snapshot.displaySettings.scenePlacements
     }
 
     fun unlockFigure(figure: ChallengeFigure) {
@@ -644,6 +874,19 @@ fun ChallengesRoute(
                     )
                 )
                 reload()
+            },
+            onFailure = { toast(context, it.localizedMessage ?: context.getString(R.string.firebase_not_ready)) }
+        )
+    }
+
+    fun saveScenePlacements(placements: Map<String, ChallengeScenePlacement>) {
+        val safeUserId = userId ?: return
+        ChallengeRepository.saveScenePlacements(
+            userId = safeUserId,
+            placements = placements,
+            onSuccess = {
+                toast(context, context.getString(R.string.challenge_scene_saved))
+                reload(showSpinner = false)
             },
             onFailure = { toast(context, it.localizedMessage ?: context.getString(R.string.firebase_not_ready)) }
         )
@@ -768,7 +1011,7 @@ fun ChallengesRoute(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 24.dp),
+            .padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
@@ -817,16 +1060,44 @@ fun ChallengesRoute(
                         }
                     } else {
                         item {
-                            ActiveMissionGrid(
-                                missions = activeMissions,
-                                onToggle = ::toggleMission
+                            BoardMissionFilters(
+                                groups = boardFilterGroups,
+                                xpRewards = boardFilterXpRewards,
+                                selectedGroupIds = boardGroupFilterIds,
+                                selectedXpRewards = boardXpFilters,
+                                onToggleGroup = { groupId ->
+                                    boardGroupFilterIds = if (groupId in boardGroupFilterIds) {
+                                        boardGroupFilterIds - groupId
+                                    } else {
+                                        boardGroupFilterIds + groupId
+                                    }
+                                },
+                                onToggleXp = { xpReward ->
+                                    boardXpFilters = if (xpReward in boardXpFilters) {
+                                        boardXpFilters - xpReward
+                                    } else {
+                                        boardXpFilters + xpReward
+                                    }
+                                }
                             )
+                        }
+                        item {
+                            if (filteredActiveMissions.isEmpty()) {
+                                ChallengeMessageCard(text = stringResource(R.string.challenge_board_filters_empty))
+                            } else {
+                                ActiveMissionGrid(
+                                    missions = filteredActiveMissions,
+                                    onToggle = ::toggleMission,
+                                    onEdit = { editingTask = it.task },
+                                    onSkipToday = ::skipMissionToday
+                                )
+                            }
                         }
                     }
                     item {
                         ChallengeSummaryRow(
-                            completedToday = activeMissions.count { it.completedToday },
-                            totalToday = activeMissions.size,
+                            completedToday = filteredActiveMissions.count { it.completedToday },
+                            totalToday = filteredActiveMissions.size,
                             totalTasks = snapshot.tasks.size,
                             totalGroups = snapshot.groups.size
                         )
@@ -873,13 +1144,44 @@ fun ChallengesRoute(
                             totalXp = totalXp
                         )
                     }
+                    item {
+                        HistoryFilterPanel(
+                            groups = snapshot.groups,
+                            selectedGroupId = historyGroupFilterId,
+                            selectedEffort = historyEffortFilter,
+                            completionFilter = historyCompletionFilter,
+                            scheduleFilter = historyScheduleFilter,
+                            sortMode = historySortMode,
+                            searchQuery = historySearchQuery,
+                            visibleCount = filteredHistoryStats.size,
+                            totalCount = historyStats.size,
+                            onGroupSelected = { historyGroupFilterId = it },
+                            onEffortSelected = { historyEffortFilter = it },
+                            onCompletionSelected = { historyCompletionFilter = it },
+                            onScheduleSelected = { historyScheduleFilter = it },
+                            onSortSelected = { historySortMode = it },
+                            onSearchChanged = { historySearchQuery = it },
+                            onClear = {
+                                historyGroupFilterId = null
+                                historyEffortFilter = null
+                                historyCompletionFilter = HistoryCompletionFilter.ALL
+                                historyScheduleFilter = HistoryScheduleFilter.ALL
+                                historySortMode = HistorySortMode.MOST_COMPLETED
+                                historySearchQuery = ""
+                            }
+                        )
+                    }
                     if (historyStats.isEmpty()) {
                         item {
                             ChallengeMessageCard(text = stringResource(R.string.challenge_history_empty))
                         }
+                    } else if (filteredHistoryStats.isEmpty()) {
+                        item {
+                            ChallengeMessageCard(text = stringResource(R.string.challenge_history_filters_empty))
+                        }
                     } else {
-                        items(historyStats, key = { it.task.id }) { stat ->
-                            ChallengeHistoryCard(stat = stat)
+                        items(filteredHistoryStats, key = { it.task.id }) { stat ->
+                            ChallengeHistoryCard(stat = stat, onToggleDay = { status -> toggleHistoryDay(stat.task, status) })
                         }
                     }
                 }
@@ -941,10 +1243,30 @@ fun ChallengesRoute(
                         )
                     }
                     item {
-                        ChallengeScenerySceneCard(
+                        val figures = ownedFigures.map { it.figure }
+                        val accessories = equippedAccessories.map { it.accessory }
+                        ChallengeInteractiveScenery(
                             scenery = equippedScenery,
-                            accessories = equippedAccessories,
-                            figures = ownedFigures
+                            objects = challengeSceneObjects(figures, accessories),
+                            placements = sceneDraftPlacements,
+                            editable = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            onPlacementsChanged = { sceneDraftPlacements = it }
+                        )
+                    }
+                    item {
+                        ChallengeSceneEditorControls(
+                            ownedSceneries = ownedSceneries,
+                            ownedAccessories = ownedAccessories,
+                            equippedSceneryId = snapshot.displaySettings.equippedSceneryId,
+                            equippedAccessoryIds = snapshot.displaySettings.equippedAccessoryIds,
+                            onEquipScenery = ::equipScenery,
+                            onToggleAccessory = ::toggleAccessoryEquip,
+                            onSaveLayout = { saveScenePlacements(sceneDraftPlacements) },
+                            onResetLayout = { sceneDraftPlacements = emptyMap() },
+                            onOpenFullscreen = {
+                                context.startActivity(Intent(context, ChallengeSceneryActivity::class.java))
+                            }
                         )
                     }
                     if (ownedFigures.isEmpty()) {
@@ -1138,16 +1460,73 @@ private fun ChallengeLevelCard(levelStatus: ChallengeLevelStatus) {
 }
 
 @Composable
+private fun BoardMissionFilters(
+    groups: List<ChallengeGroup>,
+    xpRewards: List<Int>,
+    selectedGroupIds: Set<String>,
+    selectedXpRewards: Set<Int>,
+    onToggleGroup: (String) -> Unit,
+    onToggleXp: (Int) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (groups.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    groups.forEach { group ->
+                        FilterChip(
+                            selected = group.id in selectedGroupIds,
+                            onClick = { onToggleGroup(group.id) },
+                            label = {
+                                Text(
+                                    text = group.icon,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+            if (xpRewards.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    xpRewards.forEach { xpReward ->
+                        FilterChip(
+                            selected = xpReward in selectedXpRewards,
+                            onClick = { onToggleXp(xpReward) },
+                            label = {
+                                Text(
+                                    text = xpReward.toString(),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ActiveMissionGrid(
     missions: List<ChallengeTaskUi>,
-    onToggle: (ChallengeTaskUi) -> Unit
+    onToggle: (ChallengeTaskUi) -> Unit,
+    onEdit: (ChallengeTaskUi) -> Unit,
+    onSkipToday: (ChallengeTaskUi) -> Unit
 ) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         missions.forEach { mission ->
+            var menuExpanded by remember(mission.task.id) { mutableStateOf(false) }
             Card(
                 modifier = Modifier
                     .fillMaxWidth(if (mission.completedToday) 0.29f else 0.48f)
-                    .clickable { onToggle(mission) },
+                    .combinedClickable(
+                        onClick = { onToggle(mission) },
+                        onLongClick = { menuExpanded = true }
+                    ),
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = if (mission.completedToday) {
@@ -1165,7 +1544,7 @@ private fun ActiveMissionGrid(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "${mission.task.xpReward} XP",
+                            text = stringResource(R.string.challenge_xp_short, mission.task.xpReward),
                             style = if (mission.completedToday) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
                             color = if (mission.completedToday) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
                         )
@@ -1180,11 +1559,39 @@ private fun ActiveMissionGrid(
                         color = if (mission.completedToday) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(if (mission.completedToday) 4.dp else 8.dp))
-                    Text(
-                        text = stringResource(if (mission.completedToday) R.string.challenge_tile_done else R.string.challenge_tile_tap),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Box {
+                        Text(
+                            text = stringResource(if (mission.completedToday) R.string.challenge_tile_done else R.string.challenge_tile_tap),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.challenge_board_menu_edit_task)) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onEdit(mission)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.challenge_board_menu_wont_do_today)) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onSkipToday(mission)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.challenge_board_menu_completed)) },
+                                onClick = {
+                                    menuExpanded = false
+                                    if (!mission.completedToday) onToggle(mission)
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1351,19 +1758,193 @@ private fun HistoryOverviewCard(completionCount: Int, taskCount: Int, totalXp: I
 }
 
 @Composable
-private fun ChallengeHistoryCard(stat: ChallengeTaskStats) {
+private fun HistoryFilterPanel(
+    groups: List<ChallengeGroup>,
+    selectedGroupId: String?,
+    selectedEffort: Int?,
+    completionFilter: HistoryCompletionFilter,
+    scheduleFilter: HistoryScheduleFilter,
+    sortMode: HistorySortMode,
+    searchQuery: String,
+    visibleCount: Int,
+    totalCount: Int,
+    onGroupSelected: (String?) -> Unit,
+    onEffortSelected: (Int?) -> Unit,
+    onCompletionSelected: (HistoryCompletionFilter) -> Unit,
+    onScheduleSelected: (HistoryScheduleFilter) -> Unit,
+    onSortSelected: (HistorySortMode) -> Unit,
+    onSearchChanged: (String) -> Unit,
+    onClear: () -> Unit
+) {
+    val filtersActive = selectedGroupId != null ||
+        selectedEffort != null ||
+        completionFilter != HistoryCompletionFilter.ALL ||
+        scheduleFilter != HistoryScheduleFilter.ALL ||
+        sortMode != HistorySortMode.MOST_COMPLETED ||
+        searchQuery.isNotBlank()
+
+    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.challenge_history_filters_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = stringResource(R.string.challenge_history_filter_count, visibleCount, totalCount),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(onClick = onClear, enabled = filtersActive) {
+                    Text(stringResource(R.string.challenge_history_filters_clear))
+                }
+            }
+
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchChanged,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text(stringResource(R.string.challenge_history_search_label)) }
+            )
+
+            HistoryFilterSection(title = stringResource(R.string.challenge_history_group_filter)) {
+                FilterChip(
+                    selected = selectedGroupId == null,
+                    onClick = { onGroupSelected(null) },
+                    label = { Text(stringResource(R.string.challenge_filter_all)) }
+                )
+                groups.forEach { group ->
+                    FilterChip(
+                        selected = selectedGroupId == group.id,
+                        onClick = { onGroupSelected(group.id) },
+                        label = { Text("${group.icon} ${group.title}", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    )
+                }
+            }
+
+            HistoryFilterSection(title = stringResource(R.string.challenge_effort_label)) {
+                FilterChip(
+                    selected = selectedEffort == null,
+                    onClick = { onEffortSelected(null) },
+                    label = { Text(stringResource(R.string.challenge_history_any_difficulty)) }
+                )
+                (1..5).forEach { effort ->
+                    FilterChip(
+                        selected = selectedEffort == effort,
+                        onClick = { onEffortSelected(effort) },
+                        label = { Text(stringResource(ChallengeGameEngine.effortLabelRes(effort))) }
+                    )
+                }
+            }
+
+            HistoryFilterSection(title = stringResource(R.string.challenge_history_completion_filter)) {
+                HistoryCompletionFilter.entries.forEach { filter ->
+                    FilterChip(
+                        selected = completionFilter == filter,
+                        onClick = { onCompletionSelected(filter) },
+                        label = { Text(historyCompletionFilterLabel(filter)) }
+                    )
+                }
+            }
+
+            HistoryFilterSection(title = stringResource(R.string.challenge_history_schedule_filter)) {
+                HistoryScheduleFilter.entries.forEach { filter ->
+                    FilterChip(
+                        selected = scheduleFilter == filter,
+                        onClick = { onScheduleSelected(filter) },
+                        label = { Text(historyScheduleFilterLabel(filter)) }
+                    )
+                }
+            }
+
+            HistoryFilterSection(title = stringResource(R.string.challenge_history_sort_filter)) {
+                HistorySortMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = sortMode == mode,
+                        onClick = { onSortSelected(mode) },
+                        label = { Text(historySortModeLabel(mode)) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HistoryFilterSection(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun historyCompletionFilterLabel(filter: HistoryCompletionFilter): String {
+    return when (filter) {
+        HistoryCompletionFilter.ALL -> stringResource(R.string.challenge_history_completion_all)
+        HistoryCompletionFilter.ZERO -> stringResource(R.string.challenge_history_completion_zero)
+        HistoryCompletionFilter.LOW -> stringResource(R.string.challenge_history_completion_low)
+        HistoryCompletionFilter.HIGH -> stringResource(R.string.challenge_history_completion_high)
+        HistoryCompletionFilter.COMPLETE -> stringResource(R.string.challenge_history_completion_complete)
+    }
+}
+
+@Composable
+private fun historyScheduleFilterLabel(filter: HistoryScheduleFilter): String {
+    return when (filter) {
+        HistoryScheduleFilter.ALL -> stringResource(R.string.challenge_history_schedule_all)
+        HistoryScheduleFilter.ACTIVE_TODAY -> stringResource(R.string.challenge_history_schedule_today)
+        HistoryScheduleFilter.MISSED_THIS_WEEK -> stringResource(R.string.challenge_history_schedule_missed)
+        HistoryScheduleFilter.NEVER_COMPLETED -> stringResource(R.string.challenge_history_schedule_never)
+    }
+}
+
+@Composable
+private fun historySortModeLabel(mode: HistorySortMode): String {
+    return when (mode) {
+        HistorySortMode.MOST_COMPLETED -> stringResource(R.string.challenge_history_sort_most)
+        HistorySortMode.LOWEST_COMPLETION -> stringResource(R.string.challenge_history_sort_lowest)
+        HistorySortMode.RECENT -> stringResource(R.string.challenge_history_sort_recent)
+        HistorySortMode.TITLE -> stringResource(R.string.challenge_history_sort_title)
+    }
+}
+
+@Composable
+private fun ChallengeHistoryCard(stat: ChallengeTaskStats, onToggleDay: (ChallengeDayStatus) -> Unit) {
     val context = LocalContext.current
     val formatter = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
     val weekStatuses = remember(stat.completions, stat.task.activeDays) {
         val todayKey = ChallengeGameEngine.currentDayKey()
-        ChallengeGameEngine.weekDaySequenceStartingSaturday().map { (dayOfWeek, dayKey) ->
+        val todayIndex = listOf(
+            Calendar.SATURDAY,
+            Calendar.SUNDAY,
+            Calendar.MONDAY,
+            Calendar.TUESDAY,
+            Calendar.WEDNESDAY,
+            Calendar.THURSDAY,
+            Calendar.FRIDAY
+        ).indexOf(ChallengeGameEngine.currentDayOfWeek())
+        ChallengeGameEngine.weekDaySequenceStartingSaturday().mapIndexed { index, (dayOfWeek, dayKey) ->
             val isAssigned = stat.task.activeDays.contains(dayOfWeek)
-            val isCompleted = stat.completions.any { it.dayKey == dayKey }
+            val completion = stat.completions.firstOrNull { it.dayKey == dayKey }
             when {
-                isCompleted -> ChallengeDayStatus(dayLabel(dayOfWeek), "\u2713", ChallengeDayStatusKind.COMPLETED)
-                !isAssigned -> ChallengeDayStatus(dayLabel(dayOfWeek), "\u2212", ChallengeDayStatusKind.NOT_ASSIGNED)
-                dayKey > todayKey -> ChallengeDayStatus(dayLabel(dayOfWeek), "", ChallengeDayStatusKind.PENDING)
-                else -> ChallengeDayStatus(dayLabel(dayOfWeek), "\u2715", ChallengeDayStatusKind.MISSED)
+                completion != null -> ChallengeDayStatus(dayLabel(dayOfWeek), "\u2713", ChallengeDayStatusKind.COMPLETED, dayKey, completion.id)
+                !isAssigned -> ChallengeDayStatus(dayLabel(dayOfWeek), "\u2212", ChallengeDayStatusKind.NOT_ASSIGNED, dayKey)
+                index > todayIndex -> ChallengeDayStatus(dayLabel(dayOfWeek), "", ChallengeDayStatusKind.PENDING, dayKey)
+                dayKey == todayKey -> ChallengeDayStatus(dayLabel(dayOfWeek), "...", ChallengeDayStatusKind.IN_PROGRESS, dayKey)
+                else -> ChallengeDayStatus(dayLabel(dayOfWeek), "\u2715", ChallengeDayStatusKind.MISSED, dayKey)
             }
         }
     }
@@ -1380,16 +1961,24 @@ private fun ChallengeHistoryCard(stat: ChallengeTaskStats) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                AssistChip(onClick = {}, enabled = false, label = { Text("${stat.totalCount}") })
+                AssistChip(
+                    onClick = {},
+                    enabled = false,
+                    label = { Text(stringResource(R.string.challenge_history_completion_percent, stat.currentWeekCompletionPercent())) }
+                )
             }
             Spacer(modifier = Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ChallengeMiniStat(modifier = Modifier.weight(1f), value = stat.countSince(7).toString(), label = stringResource(R.string.challenge_history_week))
                 ChallengeMiniStat(modifier = Modifier.weight(1f), value = stat.countSince(30).toString(), label = stringResource(R.string.challenge_history_month))
-                ChallengeMiniStat(modifier = Modifier.weight(1f), value = "${stat.task.xpReward}", label = "XP")
+                ChallengeMiniStat(
+                    modifier = Modifier.weight(1f),
+                    value = stat.task.xpReward.toString(),
+                    label = stringResource(R.string.challenge_xp_label)
+                )
             }
             Spacer(modifier = Modifier.height(12.dp))
-            Text(text = "This week", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+            Text(text = stringResource(R.string.challenge_history_this_week), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
             Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1400,19 +1989,24 @@ private fun ChallengeHistoryCard(stat: ChallengeTaskStats) {
                     val statusColor = when (status.kind) {
                         ChallengeDayStatusKind.COMPLETED -> Color(0xFF2E9F5B)
                         ChallengeDayStatusKind.MISSED -> Color(0xFFD64545)
+                        ChallengeDayStatusKind.IN_PROGRESS -> Color(0xFFE0A600)
                         ChallengeDayStatusKind.PENDING -> MaterialTheme.colorScheme.outline.copy(alpha = 0.55f)
                         ChallengeDayStatusKind.NOT_ASSIGNED -> MaterialTheme.colorScheme.outline.copy(alpha = 0.8f)
                     }
                     val fillColor = when (status.kind) {
-                        ChallengeDayStatusKind.COMPLETED, ChallengeDayStatusKind.MISSED -> statusColor.copy(alpha = 0.14f)
+                        ChallengeDayStatusKind.COMPLETED, ChallengeDayStatusKind.MISSED, ChallengeDayStatusKind.IN_PROGRESS -> statusColor.copy(alpha = 0.14f)
                         else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                     }
+                    val editable = status.kind == ChallengeDayStatusKind.COMPLETED ||
+                        status.kind == ChallengeDayStatusKind.MISSED ||
+                        status.kind == ChallengeDayStatusKind.IN_PROGRESS
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
                         Box(
                             modifier = Modifier
                                 .size(34.dp)
                                 .border(width = 1.5.dp, color = statusColor, shape = CircleShape)
-                                .background(fillColor, CircleShape),
+                                .background(fillColor, CircleShape)
+                                .clickable(enabled = editable) { onToggleDay(status) },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -1486,12 +2080,15 @@ private fun ShopTabs(selectedTab: Int, onSelectTab: (Int) -> Unit) {
 private data class ChallengeDayStatus(
     val label: String,
     val symbol: String,
-    val kind: ChallengeDayStatusKind
+    val kind: ChallengeDayStatusKind,
+    val dayKey: String,
+    val completionId: String? = null
 )
 
 private enum class ChallengeDayStatusKind {
     COMPLETED,
     MISSED,
+    IN_PROGRESS,
     PENDING,
     NOT_ASSIGNED
 }
@@ -2213,6 +2810,80 @@ private fun ChallengeGalleryHeader(ownedCount: Int, sceneryName: String, accesso
 }
 
 @Composable
+private fun ChallengeSceneEditorControls(
+    ownedSceneries: List<OwnedSceneryUi>,
+    ownedAccessories: List<OwnedAccessoryUi>,
+    equippedSceneryId: String,
+    equippedAccessoryIds: List<String>,
+    onEquipScenery: (ChallengeScenery) -> Unit,
+    onToggleAccessory: (ChallengeAccessory) -> Unit,
+    onSaveLayout: () -> Unit,
+    onResetLayout: () -> Unit,
+    onOpenFullscreen: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                text = stringResource(R.string.challenge_scene_editor_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = stringResource(R.string.challenge_scene_editor_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = stringResource(R.string.challenge_scene_scenery_picker),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ownedSceneries.forEach { ownedScenery ->
+                    FilterChip(
+                        selected = ownedScenery.scenery.id == equippedSceneryId,
+                        onClick = { onEquipScenery(ownedScenery.scenery) },
+                        label = { Text("${ownedScenery.scenery.accentEmoji} ${ownedScenery.scenery.name}") }
+                    )
+                }
+            }
+            Text(
+                text = stringResource(R.string.challenge_scene_accessory_picker),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ownedAccessories.forEach { ownedAccessory ->
+                    FilterChip(
+                        selected = equippedAccessoryIds.contains(ownedAccessory.accessory.id),
+                        onClick = { onToggleAccessory(ownedAccessory.accessory) },
+                        label = { Text("${ownedAccessory.accessory.emoji} ${ownedAccessory.accessory.name}") }
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = onSaveLayout, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.challenge_scene_save))
+                }
+                OutlinedButton(onClick = onResetLayout, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.challenge_scene_reset_button))
+                }
+            }
+            OutlinedButton(onClick = onOpenFullscreen, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.challenge_scene_fullscreen_button))
+            }
+        }
+    }
+}
+
+@Composable
 private fun ChallengeScenerySceneCard(
     scenery: ChallengeScenery,
     accessories: List<OwnedAccessoryUi>,
@@ -2405,7 +3076,7 @@ private fun ChallengeTaskForm(
     var selectedGroupId by remember(groups) { mutableStateOf(groups.firstOrNull()?.id.orEmpty()) }
     var title by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
-    var effort by remember { mutableStateOf(2) }
+    var effort by remember { mutableIntStateOf(2) }
     var activeDays by remember { mutableStateOf(setOf(2, 3, 4, 5, 6)) }
 
     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -2564,7 +3235,7 @@ private fun ChallengeTaskEditDialog(
     var selectedGroupId by remember(task.id, groups) { mutableStateOf(task.groupId) }
     var title by remember(task.id) { mutableStateOf(task.title) }
     var note by remember(task.id) { mutableStateOf(task.note) }
-    var effort by remember(task.id) { mutableStateOf(task.effort) }
+    var effort by remember(task.id) { mutableIntStateOf(task.effort) }
     var activeDays by remember(task.id) { mutableStateOf(task.activeDays.toSet()) }
     val trimmedTitle = title.trim()
     val trimmedNote = note.trim()

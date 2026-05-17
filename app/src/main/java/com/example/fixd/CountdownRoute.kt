@@ -1,12 +1,6 @@
 package com.example.fixd
 
 import android.content.Context
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -62,7 +56,7 @@ import java.util.Locale
 fun CountdownRoute() {
     val context = LocalContext.current
     val auth = remember { FirebaseAuth.getInstance() }
-    val cachedCountdowns = remember { CountdownLocalCache.getCountdowns(context) }
+    val cachedCountdowns = remember { CountdownLocalCache.getCountdowns(context, auth.currentUser?.uid.orEmpty()) }
     var countdowns by remember { mutableStateOf(cachedCountdowns) }
     var loading by remember { mutableStateOf(cachedCountdowns.isEmpty()) }
     var errorText by remember { mutableStateOf<String?>(null) }
@@ -71,7 +65,7 @@ fun CountdownRoute() {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     fun syncWidget(items: List<CountdownEntry>) {
-        CountdownLocalCache.saveCountdowns(context, items)
+        CountdownLocalCache.saveCountdowns(context, auth.currentUser?.uid.orEmpty(), items)
         CountdownWidgetCache.save(context, items)
         CountdownWidgetUpdater.updateAll(context)
     }
@@ -100,11 +94,12 @@ fun CountdownRoute() {
         loadCountdowns()
     }
 
-    LaunchedEffect(countdowns.isNotEmpty()) {
-        while (true) {
+    LaunchedEffect(countdowns) {
+        while (countdowns.any { it.targetAt > System.currentTimeMillis() }) {
             now = System.currentTimeMillis()
             delay(1000)
         }
+        now = System.currentTimeMillis()
     }
 
     fun saveCountdown(existing: CountdownEntry?, title: String, targetAt: Long, notifyAt: Long) {
@@ -184,7 +179,7 @@ fun CountdownRoute() {
     LazyColumn(
         modifier = Modifier
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 24.dp),
+            .padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { Spacer(modifier = Modifier.height(18.dp)) }
@@ -264,7 +259,6 @@ private fun CountdownCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .animateContentSize(spring(dampingRatio = 0.86f, stiffness = 480f))
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
@@ -301,18 +295,12 @@ private fun CountdownCard(
                 )
             }
             Spacer(modifier = Modifier.height(12.dp))
-            AnimatedContent(
-                targetState = formatRemaining(countdown.targetAt - now),
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
-                label = "countdown_remaining"
-            ) { remaining ->
-                Text(
-                    text = if (isExpired) stringResource(R.string.countdown_expired) else remaining,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isExpired) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
-                )
-            }
+            Text(
+                text = if (isExpired) stringResource(R.string.countdown_expired) else formatRemaining(countdown.targetAt - now),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (isExpired) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+            )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = stringResource(R.string.countdown_target_preview, targetText),

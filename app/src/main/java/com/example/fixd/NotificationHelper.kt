@@ -14,6 +14,7 @@ object NotificationHelper {
     const val GENERAL_CHANNEL_ID = "fixd_general_channel"
     const val FOLLOW_UP_NOTIFICATION_ID_BASE = 9000
     const val COUNTDOWN_NOTIFICATION_ID_BASE = 12000
+    const val CHALLENGE_END_OF_DAY_NOTIFICATION_ID = 13001
 
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return

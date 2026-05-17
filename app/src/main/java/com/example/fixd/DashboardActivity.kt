@@ -4,20 +4,15 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,9 +29,11 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -58,9 +55,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -134,6 +133,7 @@ class DashboardActivity : AppCompatActivity() {
     private var greetingText by mutableStateOf("")
     private var screenTitle by mutableStateOf("")
     private var currentScreen by mutableStateOf<DashboardScreen>(DashboardScreen.Home)
+    private var dashboardReady by mutableStateOf(false)
     private var floatingMenuExpanded by mutableStateOf(false)
     private var pendingOpenAction by mutableStateOf<String?>(null)
 
@@ -174,7 +174,7 @@ class DashboardActivity : AppCompatActivity() {
             onFailure = { }
         )
 
-        loadProfile(initialLoad = savedInstanceState == null)
+        loadProfile()
     }
 
     override fun onStart() {
@@ -190,13 +190,15 @@ class DashboardActivity : AppCompatActivity() {
             }
     }
 
-    private fun loadProfile(initialLoad: Boolean = false) {
+    private fun loadProfile() {
         val user = auth.currentUser ?: return
         UserProfileRepository.getEffectiveProfile(
             user = user,
             onSuccess = getProfileSuccess@{ profile ->
                 val availableProblems = profile.availableProblems.mapNotNull { ProblemArea.fromName(it) }
                 selectedProblems = profile.selectedProblems.mapNotNull { ProblemArea.fromName(it) }
+                UserPreferences.saveDisplayedProblems(this, selectedProblems)
+                stopHiddenTabBackgroundWork()
                 if (availableProblems.isEmpty()) {
                     startActivity(Intent(this, ProblemSelectionActivity::class.java))
                     finish()
@@ -204,13 +206,21 @@ class DashboardActivity : AppCompatActivity() {
                 }
 
                 refreshUserShell(profile)
-                if (initialLoad) {
+                if (!dashboardReady) {
                     activeDrawerItemId = R.id.menu_home
                     handleInitialDestination()
+                    dashboardReady = true
                 }
             },
             onFailure = {
                 android.widget.Toast.makeText(this, it.localizedMessage ?: getString(R.string.firebase_not_ready), android.widget.Toast.LENGTH_LONG).show()
+                if (!dashboardReady) {
+                    currentScreen = DashboardScreen.Home
+                    activeDrawerItemId = R.id.menu_home
+                    selectedBottomNavItemId = null
+                    screenTitle = getString(R.string.home_page_title)
+                    dashboardReady = true
+                }
             }
         )
     }
@@ -221,6 +231,29 @@ class DashboardActivity : AppCompatActivity() {
             ?: auth.currentUser?.email?.substringBefore("@")
             ?: getString(R.string.guest_label)
         greetingText = getString(R.string.dashboard_greeting, displayName)
+    }
+
+    private fun stopHiddenTabBackgroundWork() {
+        if (!UserPreferences.isProblemDisplayed(this, ProblemArea.WAKE_UP)) {
+            val userId = auth.currentUser?.uid.orEmpty()
+            if (userId.isNotBlank()) {
+                LocalAlarmCache.getAlarms(this, userId).forEach { AlarmScheduler.cancel(this, it.id) }
+                WakeSubmissionCache.getSubmissions(this, userId)
+                    .filter { it.wakeStatus == "pending" }
+                    .forEach { WakeFollowUpScheduler.cancel(this, userId, it.id) }
+            }
+        }
+        if (!UserPreferences.isProblemDisplayed(this, ProblemArea.COUNTDOWN)) {
+            val userId = auth.currentUser?.uid.orEmpty()
+            if (userId.isNotBlank()) {
+                CountdownLocalCache.getCountdowns(this, userId).forEach { CountdownReminderScheduler.cancel(this, it.id) }
+            }
+        }
+        if (UserPreferences.isProblemDisplayed(this, ProblemArea.CHALLENGES)) {
+            ChallengeEndOfDayReminderScheduler.scheduleNext(this)
+        } else {
+            ChallengeEndOfDayReminderScheduler.cancel(this)
+        }
     }
 
     private fun showProblemTab(area: ProblemArea) {
@@ -309,6 +342,7 @@ class DashboardActivity : AppCompatActivity() {
         setIntent(intent)
         if (selectedProblems.isNotEmpty()) {
             handleInitialDestination()
+            dashboardReady = true
         }
     }
 
@@ -392,6 +426,34 @@ class DashboardActivity : AppCompatActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun DashboardScreen() {
+        if (!dashboardReady) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.padding(24.dp)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_fixd_panda_logo_monochrome),
+                        contentDescription = stringResource(id = R.string.app_name),
+                        modifier = Modifier.size(72.dp)
+                    )
+                    CircularProgressIndicator(strokeWidth = 3.dp)
+                    Text(
+                        text = stringResource(id = R.string.dashboard_loading),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.74f)
+                    )
+                }
+            }
+            return
+        }
+
         val drawerState = androidx.compose.material3.rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
         val scope = rememberCoroutineScope()
         val currentProblemArea = (currentScreen as? DashboardScreen.Problem)?.area
@@ -402,7 +464,7 @@ class DashboardActivity : AppCompatActivity() {
                 currentScreen == DashboardScreen.WakeHistory ||
                 currentChallengePage != null
         val density = LocalDensity.current
-        val bubbleSize = 58.dp
+        val bubbleSize = 66.dp
         val bubblePadding = 16.dp
         val bubbleDefaultTopOffset = 94.dp
         val bubbleSizePx = with(density) { bubbleSize.toPx() }
@@ -514,6 +576,12 @@ class DashboardActivity : AppCompatActivity() {
                                 fontWeight = FontWeight.Bold
                             )
                         }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(id = R.string.drawer_header_subtitle),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         Spacer(modifier = Modifier.height(18.dp))
                         DrawerDestination.entries.forEach { destination ->
                             NavigationDrawerItem(
@@ -584,7 +652,12 @@ class DashboardActivity : AppCompatActivity() {
                                                 modifier = Modifier.size(30.dp)
                                             )
                                         },
-                                        label = null,
+                                        label = {
+                                            Text(
+                                                text = stringResource(id = area.titleRes),
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        },
                                         alwaysShowLabel = false
                                     )
                                 }
@@ -596,7 +669,7 @@ class DashboardActivity : AppCompatActivity() {
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(innerPadding)
-                            .padding(horizontal = 20.dp, vertical = 10.dp)
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
                     ) {
                         Text(
                             text = greetingText,
@@ -608,24 +681,15 @@ class DashboardActivity : AppCompatActivity() {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp))
-                                .animateContentSize(),
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
                         ) {
                             PullToRefreshBox(
                                 isRefreshing = refreshing,
                                 onRefresh = { refreshCurrentScreen() },
                                 modifier = Modifier.fillMaxSize()
                             ) {
-                                AnimatedContent(
-                                    targetState = currentScreen to refreshTick,
-                                    contentKey = { dashboardScreenKey(it.first) + "_${it.second}" },
-                                    transitionSpec = {
-                                        (fadeIn() + slideInVertically(initialOffsetY = { it / 12 })) togetherWith
-                                            (fadeOut() + slideOutVertically(targetOffsetY = { -it / 18 }))
-                                    },
-                                    label = "dashboard_screen_transition"
-                                ) { (screen, _) ->
-                                    when (screen) {
+                                key(dashboardScreenKey(currentScreen) + "_$refreshTick") {
+                                    when (val screen = currentScreen) {
                                         DashboardScreen.Home -> HomeRoute(
                                             selectedProblems = selectedProblems,
                                             onOpenArea = { showProblemTab(it) },
@@ -682,13 +746,28 @@ class DashboardActivity : AppCompatActivity() {
                     ) {
                         Card(
                             modifier = Modifier
+                                .size(bubbleSize)
                                 .graphicsLayer {
                                     scaleX = bubbleScale
                                     scaleY = bubbleScale
                                 }
+                                .background(
+                                    MaterialTheme.colorScheme.background.copy(alpha = 0.94f),
+                                    androidx.compose.foundation.shape.CircleShape
+                                )
                                 .border(
-                                    width = 2.dp,
-                                    color = MaterialTheme.colorScheme.surface,
+                                    width = 3.dp,
+                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.24f),
+                                    shape = androidx.compose.foundation.shape.CircleShape
+                                )
+                                .padding(4.dp)
+                                .border(
+                                    width = 1.5.dp,
+                                    color = if (floatingMenuExpanded) {
+                                        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.42f)
+                                    } else {
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.72f)
+                                    },
                                     shape = androidx.compose.foundation.shape.CircleShape
                                 )
                                 .pointerInput(viewportSize, isProblemContext) {
@@ -722,17 +801,27 @@ class DashboardActivity : AppCompatActivity() {
                                     )
                                 },
                             shape = androidx.compose.foundation.shape.CircleShape,
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (floatingMenuExpanded) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                }
+                            ),
                             elevation = CardDefaults.cardElevation(defaultElevation = bubbleElevation)
                         ) {
                             IconButton(
                                 onClick = { floatingMenuExpanded = !floatingMenuExpanded },
-                                modifier = Modifier.padding(2.dp)
+                                modifier = Modifier.fillMaxSize()
                             ) {
                                 Icon(
                                     Icons.Outlined.Menu,
                                     contentDescription = stringResource(id = R.string.menu_open),
-                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    tint = if (floatingMenuExpanded) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        MaterialTheme.colorScheme.primary
+                                    },
                                     modifier = Modifier.graphicsLayer {
                                         rotationZ = bubbleIconRotation
                                     }
@@ -742,12 +831,44 @@ class DashboardActivity : AppCompatActivity() {
 
                         DropdownMenu(
                             expanded = floatingMenuExpanded,
-                            onDismissRequest = { floatingMenuExpanded = false }
+                            onDismissRequest = { floatingMenuExpanded = false },
+                            modifier = Modifier
+                                .width(238.dp)
+                                .border(
+                                    1.5.dp,
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.42f),
+                                    androidx.compose.foundation.shape.RoundedCornerShape(22.dp)
+                                )
+                                .background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.RoundedCornerShape(22.dp)),
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 10.dp,
+                            shadowElevation = 18.dp
                         ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(id = R.string.floating_menu_title),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = stringResource(id = R.string.floating_menu_body),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
                             when {
                                 currentProblemArea == ProblemArea.WAKE_UP -> {
                                     DropdownMenuItem(
-                                        text = { Text(stringResource(id = R.string.wake_history_full_title)) },
+                                        text = {
+                                            FloatingMenuLabel(text = stringResource(id = R.string.wake_history_full_title))
+                                        },
                                         onClick = {
                                             floatingMenuExpanded = false
                                             showWakeHistoryPage()
@@ -756,7 +877,9 @@ class DashboardActivity : AppCompatActivity() {
                                 }
                                 currentScreen == DashboardScreen.WakeHistory -> {
                                     DropdownMenuItem(
-                                        text = { Text(stringResource(id = R.string.problem_wake_up)) },
+                                        text = {
+                                            FloatingMenuLabel(text = stringResource(id = R.string.problem_wake_up))
+                                        },
                                         onClick = {
                                             floatingMenuExpanded = false
                                             showProblemTab(ProblemArea.WAKE_UP)
@@ -774,7 +897,12 @@ class DashboardActivity : AppCompatActivity() {
                                         ChallengePage.BADGES
                                     ).forEach { page ->
                                         DropdownMenuItem(
-                                            text = { Text(stringResource(id = page.titleRes)) },
+                                            text = {
+                                                FloatingMenuLabel(
+                                                    text = stringResource(id = page.titleRes),
+                                                    selected = currentChallengePage == page
+                                                )
+                                            },
                                             onClick = {
                                                 floatingMenuExpanded = false
                                                 showChallengesPage(page)
@@ -787,6 +915,40 @@ class DashboardActivity : AppCompatActivity() {
                     }
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun FloatingMenuLabel(text: String, selected: Boolean = false) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                .background(
+                    if (selected) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                    } else {
+                        Color.Transparent
+                    }
+                )
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(
+                        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                        androidx.compose.foundation.shape.CircleShape
+                    )
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 

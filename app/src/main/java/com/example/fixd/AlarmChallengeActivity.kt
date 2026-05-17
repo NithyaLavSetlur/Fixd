@@ -565,7 +565,7 @@ class AlarmChallengeActivity : AppCompatActivity() {
                 responseDurationMs = completedAt - triggeredAt
             ),
             onSuccess = { savedSubmission ->
-                WakeSubmissionCache.upsertSubmission(this, savedSubmission)
+                WakeSubmissionCache.upsertSubmission(this, userId, savedSubmission)
                 WakeWidgetUpdater.updateAll(this)
                 if (result.passed) {
                     WakeFollowUpScheduler.schedule(
@@ -605,7 +605,20 @@ class AlarmChallengeActivity : AppCompatActivity() {
             userId = user.uid,
             onSuccess = { alarms ->
                 alarms.firstOrNull { it.id == alarmId && it.enabled }?.let {
-                    AlarmScheduler.schedule(this, it)
+                    if (it.isSleepDurationAlarm()) {
+                        val completed = it.copy(enabled = false, triggerAtMillis = 0L)
+                        AlarmRepository.saveAlarm(
+                            userId = user.uid,
+                            alarm = completed,
+                            onSuccess = { saved ->
+                                AlarmScheduler.cancel(this, saved.id)
+                                LocalAlarmCache.saveAlarms(this, user.uid, alarms.map { alarm -> if (alarm.id == saved.id) saved else alarm })
+                            },
+                            onFailure = { }
+                        )
+                    } else {
+                        AlarmScheduler.schedule(this, it)
+                    }
                 }
             },
             onFailure = { }

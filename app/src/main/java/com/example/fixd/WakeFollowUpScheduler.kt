@@ -17,6 +17,10 @@ object WakeFollowUpScheduler {
         triggerAtMillis: Long,
         attempt: Int = FIRST_FOLLOW_UP_ATTEMPT
     ) {
+        if (!UserPreferences.isProblemDisplayed(context, ProblemArea.WAKE_UP)) {
+            cancel(context, userId, submissionId)
+            return
+        }
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         alarmManager.setExactAndAllowWhileIdle(
             AlarmManager.RTC_WAKEUP,

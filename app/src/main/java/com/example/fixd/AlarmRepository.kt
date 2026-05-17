@@ -4,6 +4,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 
 object AlarmRepository {
     private val firestore by lazy { FirebaseFirestore.getInstance() }
+    private val validDays = 1..7
 
     private fun alarms(userId: String) =
         firestore.collection("users").document(userId).collection("alarms")
@@ -22,16 +23,21 @@ object AlarmRepository {
             .addOnSuccessListener { snapshot ->
                 onSuccess(
                     snapshot.documents.map { doc ->
-                        WakeAlarm(
-                            id = doc.id,
-                            name = doc.getString("name").orEmpty(),
-                            hour = (doc.getLong("hour") ?: 7L).toInt(),
-                            minute = (doc.getLong("minute") ?: 0L).toInt(),
-                            repeatDays = (doc.get("repeatDays") as? List<*>)?.mapNotNull {
-                                (it as? Long)?.toInt()
-                            } ?: listOf(1, 2, 3, 4, 5, 6, 7),
-                            enabled = doc.getBoolean("enabled") ?: true,
-                            createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis()
+                        sanitizeAlarm(
+                            WakeAlarm(
+                                id = doc.id,
+                                name = doc.getString("name").orEmpty(),
+                                hour = (doc.getLong("hour") ?: 7L).toInt(),
+                                minute = (doc.getLong("minute") ?: 0L).toInt(),
+                                repeatDays = (doc.get("repeatDays") as? List<*>)?.mapNotNull {
+                                    (it as? Long)?.toInt()
+                                } ?: listOf(1, 2, 3, 4, 5, 6, 7),
+                                enabled = doc.getBoolean("enabled") ?: true,
+                                createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis(),
+                                kind = doc.getString("kind") ?: WakeAlarm.KIND_STANDARD,
+                                triggerAtMillis = doc.getLong("triggerAtMillis") ?: 0L,
+                                sleepDurationHours = doc.getDouble("sleepDurationHours")?.toFloat() ?: 0f
+                            )
                         )
                     }
                 )
@@ -46,7 +52,7 @@ object AlarmRepository {
         onFailure: (Exception) -> Unit
     ) {
         val document = if (alarm.id.isBlank()) alarms(userId).document() else alarms(userId).document(alarm.id)
-        val updated = alarm.copy(id = document.id)
+        val updated = sanitizeAlarm(alarm.copy(id = document.id))
         document.set(
             mapOf(
                 "hour" to updated.hour,
@@ -54,7 +60,10 @@ object AlarmRepository {
                 "name" to updated.name,
                 "repeatDays" to updated.repeatDays,
                 "enabled" to updated.enabled,
-                "createdAt" to updated.createdAt
+                "createdAt" to updated.createdAt,
+                "kind" to updated.kind,
+                "triggerAtMillis" to updated.triggerAtMillis,
+                "sleepDurationHours" to updated.sleepDurationHours
             )
         )
             .addOnSuccessListener { onSuccess(updated) }
@@ -81,7 +90,7 @@ object AlarmRepository {
         onFailure: (Exception) -> Unit
     ) {
         val document = if (submission.id.isBlank()) submissions(userId).document() else submissions(userId).document(submission.id)
-        val updated = submission.copy(id = document.id)
+        val updated = sanitizeSubmission(submission.copy(id = document.id))
         document.set(
                 mapOf(
                     "alarmId" to updated.alarmId,
@@ -110,9 +119,10 @@ object AlarmRepository {
         onSuccess: () -> Unit,
         onFailure: (Exception) -> Unit
     ) {
+        val sanitizedWakeStatus = sanitizeWakeStatus(wakeStatus)
         submissions(userId)
             .document(submissionId)
-            .update("wakeStatus", wakeStatus)
+            .update("wakeStatus", sanitizedWakeStatus)
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener(onFailure)
     }
@@ -128,21 +138,23 @@ object AlarmRepository {
             .addOnSuccessListener { snapshot ->
                 onSuccess(
                     snapshot.documents.map { doc ->
-                        WakeSubmission(
-                            id = doc.id,
-                            alarmId = doc.getString("alarmId").orEmpty(),
-                            type = doc.getString("type").orEmpty(),
-                            text = doc.getString("text").orEmpty(),
-                            imagePath = doc.getString("imagePath").orEmpty(),
-                            verdict = doc.getString("verdict").orEmpty(),
-                            feedback = doc.getString("feedback").orEmpty(),
-                            alarmHour = (doc.getLong("alarmHour") ?: 0L).toInt(),
-                            alarmMinute = (doc.getLong("alarmMinute") ?: 0L).toInt(),
-                            triggeredAt = doc.getLong("triggeredAt") ?: 0L,
-                            completedAt = doc.getLong("completedAt") ?: 0L,
-                            responseDurationMs = doc.getLong("responseDurationMs") ?: 0L,
-                            wakeStatus = doc.getString("wakeStatus") ?: "pending",
-                            createdAt = doc.getLong("createdAt") ?: 0L
+                        sanitizeSubmission(
+                            WakeSubmission(
+                                id = doc.id,
+                                alarmId = doc.getString("alarmId").orEmpty(),
+                                type = doc.getString("type").orEmpty(),
+                                text = doc.getString("text").orEmpty(),
+                                imagePath = doc.getString("imagePath").orEmpty(),
+                                verdict = doc.getString("verdict").orEmpty(),
+                                feedback = doc.getString("feedback").orEmpty(),
+                                alarmHour = (doc.getLong("alarmHour") ?: 0L).toInt(),
+                                alarmMinute = (doc.getLong("alarmMinute") ?: 0L).toInt(),
+                                triggeredAt = doc.getLong("triggeredAt") ?: 0L,
+                                completedAt = doc.getLong("completedAt") ?: 0L,
+                                responseDurationMs = doc.getLong("responseDurationMs") ?: 0L,
+                                wakeStatus = doc.getString("wakeStatus") ?: "pending",
+                                createdAt = doc.getLong("createdAt") ?: 0L
+                            )
                         )
                     }.sortedByDescending { it.createdAt }
                 )
@@ -163,25 +175,65 @@ object AlarmRepository {
             .addOnSuccessListener { snapshot ->
                 onSuccess(
                     snapshot.documents.map { doc ->
-                        WakeSubmission(
-                            id = doc.id,
-                            alarmId = doc.getString("alarmId").orEmpty(),
-                            type = doc.getString("type").orEmpty(),
-                            text = doc.getString("text").orEmpty(),
-                            imagePath = doc.getString("imagePath").orEmpty(),
-                            verdict = doc.getString("verdict").orEmpty(),
-                            feedback = doc.getString("feedback").orEmpty(),
-                            alarmHour = (doc.getLong("alarmHour") ?: 0L).toInt(),
-                            alarmMinute = (doc.getLong("alarmMinute") ?: 0L).toInt(),
-                            triggeredAt = doc.getLong("triggeredAt") ?: 0L,
-                            completedAt = doc.getLong("completedAt") ?: 0L,
-                            responseDurationMs = doc.getLong("responseDurationMs") ?: 0L,
-                            wakeStatus = doc.getString("wakeStatus") ?: "pending",
-                            createdAt = doc.getLong("createdAt") ?: 0L
+                        sanitizeSubmission(
+                            WakeSubmission(
+                                id = doc.id,
+                                alarmId = doc.getString("alarmId").orEmpty(),
+                                type = doc.getString("type").orEmpty(),
+                                text = doc.getString("text").orEmpty(),
+                                imagePath = doc.getString("imagePath").orEmpty(),
+                                verdict = doc.getString("verdict").orEmpty(),
+                                feedback = doc.getString("feedback").orEmpty(),
+                                alarmHour = (doc.getLong("alarmHour") ?: 0L).toInt(),
+                                alarmMinute = (doc.getLong("alarmMinute") ?: 0L).toInt(),
+                                triggeredAt = doc.getLong("triggeredAt") ?: 0L,
+                                completedAt = doc.getLong("completedAt") ?: 0L,
+                                responseDurationMs = doc.getLong("responseDurationMs") ?: 0L,
+                                wakeStatus = doc.getString("wakeStatus") ?: "pending",
+                                createdAt = doc.getLong("createdAt") ?: 0L
+                            )
                         )
                     }
                 )
             }
             .addOnFailureListener(onFailure)
+    }
+
+    private fun sanitizeAlarm(alarm: WakeAlarm): WakeAlarm {
+        val repeatDays = alarm.repeatDays
+            .filter { it in validDays }
+            .distinct()
+            .ifEmpty { validDays.toList() }
+        val kind = alarm.kind.takeIf { it == WakeAlarm.KIND_STANDARD || it == WakeAlarm.KIND_SLEEP_DURATION }
+            ?: WakeAlarm.KIND_STANDARD
+        return alarm.copy(
+            hour = alarm.hour.coerceIn(0, 23),
+            minute = alarm.minute.coerceIn(0, 59),
+            repeatDays = repeatDays,
+            kind = kind,
+            triggerAtMillis = alarm.triggerAtMillis.coerceAtLeast(0L),
+            sleepDurationHours = alarm.sleepDurationHours.coerceAtLeast(0f)
+        )
+    }
+
+    private fun sanitizeSubmission(submission: WakeSubmission): WakeSubmission {
+        return submission.copy(
+            verdict = when (submission.verdict) {
+                "passed", "retry" -> submission.verdict
+                else -> submission.verdict.ifBlank { "retry" }
+            },
+            alarmHour = submission.alarmHour.coerceIn(0, 23),
+            alarmMinute = submission.alarmMinute.coerceIn(0, 59),
+            triggeredAt = submission.triggeredAt.coerceAtLeast(0L),
+            completedAt = submission.completedAt.coerceAtLeast(0L),
+            responseDurationMs = submission.responseDurationMs.coerceAtLeast(0L),
+            wakeStatus = sanitizeWakeStatus(submission.wakeStatus),
+            createdAt = submission.createdAt.coerceAtLeast(0L)
+        )
+    }
+
+    private fun sanitizeWakeStatus(wakeStatus: String): String = when (wakeStatus) {
+        "pending", "awake", "asleep" -> wakeStatus
+        else -> "pending"
     }
 }

@@ -14,6 +14,11 @@ class WakeFollowUpActionReceiver : BroadcastReceiver() {
             WakeFollowUpScheduler.FIRST_FOLLOW_UP_ATTEMPT
         )
         if (userId.isBlank() || submissionId.isBlank()) return
+        if (!UserPreferences.isProblemDisplayed(context, ProblemArea.WAKE_UP)) {
+            WakeFollowUpScheduler.cancel(context, userId, submissionId)
+            NotificationManagerCompat.from(context).cancel(notificationId(submissionId))
+            return
+        }
 
         val pendingResult = goAsync()
         when (intent.action) {
@@ -72,9 +77,9 @@ class WakeFollowUpActionReceiver : BroadcastReceiver() {
             submissionId = submissionId,
             wakeStatus = wakeStatus,
             onSuccess = {
-                val cachedSubmission = WakeSubmissionCache.getSubmissions(context).firstOrNull { it.id == submissionId }
+                val cachedSubmission = WakeSubmissionCache.getSubmissions(context, userId).firstOrNull { it.id == submissionId }
                 if (cachedSubmission != null) {
-                    WakeSubmissionCache.upsertSubmission(context, cachedSubmission.copy(wakeStatus = wakeStatus))
+                    WakeSubmissionCache.upsertSubmission(context, userId, cachedSubmission.copy(wakeStatus = wakeStatus))
                     WakeWidgetUpdater.updateAll(context)
                 }
                 if (NotificationHelper.canPostNotifications(context)) {

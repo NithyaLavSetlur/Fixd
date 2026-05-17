@@ -11,6 +11,7 @@ class SplashActivity : AppCompatActivity() {
         UserPreferences.applyTheme(this)
         ThemePaletteManager.loadCachedSettings(this)
         ThemePaletteManager.applyOverlay(this)
+        LauncherIconManager.reconcile(this)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val launchIntent = NavigationRouter.launchIntent(this).apply {

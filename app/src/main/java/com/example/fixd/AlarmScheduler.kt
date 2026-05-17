@@ -19,8 +19,13 @@ object AlarmScheduler {
     fun schedule(context: Context, alarm: WakeAlarm) {
         if (!canScheduleExactAlarms(context)) return
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val triggerAt = nextTriggerMillis(alarm.hour, alarm.minute, alarm.repeatDays)
         cancel(context, alarm.id)
+        if (!UserPreferences.isProblemDisplayed(context, ProblemArea.WAKE_UP)) return
+        val triggerAt = if (alarm.isSleepDurationAlarm()) {
+            alarm.triggerAtMillis.takeIf { it > System.currentTimeMillis() } ?: return
+        } else {
+            nextTriggerMillis(alarm.hour, alarm.minute, alarm.repeatDays)
+        }
         val pendingIntent = pendingIntent(context, alarm)
         val showIntent = Intent(context, DashboardActivity::class.java)
         val info = AlarmManager.AlarmClockInfo(triggerAt, PendingIntent.getActivity(
@@ -50,6 +55,7 @@ object AlarmScheduler {
             putExtra(AlarmReceiver.EXTRA_ALARM_NAME, alarm.name)
             putExtra(AlarmReceiver.EXTRA_ALARM_HOUR, alarm.hour)
             putExtra(AlarmReceiver.EXTRA_ALARM_MINUTE, alarm.minute)
+            putExtra(AlarmReceiver.EXTRA_ALARM_KIND, alarm.kind)
         }
         return PendingIntent.getBroadcast(
             context,

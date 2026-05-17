@@ -27,12 +27,14 @@ object CountdownRepository {
             .addOnSuccessListener { snapshot ->
                 onSuccess(
                     snapshot.documents.map { doc ->
-                        CountdownEntry(
+                        sanitizeCountdown(
+                            CountdownEntry(
                             id = doc.id,
                             title = doc.getString("title").orEmpty(),
                             targetAt = doc.getLong("targetAt") ?: 0L,
                             notifyAt = doc.getLong("notifyAt") ?: (doc.getLong("targetAt") ?: 0L),
                             createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis()
+                        )
                         )
                     }
                 )
@@ -47,7 +49,7 @@ object CountdownRepository {
         onFailure: (Exception) -> Unit
     ) {
         val document = if (countdown.id.isBlank()) countdowns(userId).document() else countdowns(userId).document(countdown.id)
-        val updated = countdown.copy(id = document.id)
+        val updated = sanitizeCountdown(countdown.copy(id = document.id))
         document.set(
             mapOf(
                 "title" to updated.title,
@@ -71,5 +73,15 @@ object CountdownRepository {
             .delete()
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener(onFailure)
+    }
+
+    private fun sanitizeCountdown(countdown: CountdownEntry): CountdownEntry {
+        val targetAt = countdown.targetAt.coerceAtLeast(0L)
+        return countdown.copy(
+            title = countdown.title.trim(),
+            targetAt = targetAt,
+            notifyAt = countdown.notifyAt.coerceIn(0L, targetAt),
+            createdAt = countdown.createdAt.coerceAtLeast(0L)
+        )
     }
 }

@@ -7,16 +7,19 @@ import android.content.Intent
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_LOCKED_BOOT_COMPLETED) return
-        if (!AlarmScheduler.canScheduleExactAlarms(context)) {
-            WakeWidgetUpdater.updateAll(context)
-            return
+        if (UserPreferences.isProblemDisplayed(context, ProblemArea.WAKE_UP)) {
+            LocalAlarmCache.getAlarms(context)
+                .filter { it.enabled }
+                .forEach { AlarmScheduler.schedule(context, it) }
         }
-        LocalAlarmCache.getAlarms(context)
-            .filter { it.enabled }
-            .forEach { AlarmScheduler.schedule(context, it) }
-        CountdownLocalCache.getCountdowns(context)
-            .filter { it.notifyAt > System.currentTimeMillis() }
-            .forEach { CountdownReminderScheduler.schedule(context, it) }
+        if (UserPreferences.isProblemDisplayed(context, ProblemArea.COUNTDOWN)) {
+            CountdownLocalCache.getCountdowns(context)
+                .filter { it.notifyAt > System.currentTimeMillis() }
+                .forEach { CountdownReminderScheduler.schedule(context, it) }
+        }
+        if (UserPreferences.isProblemDisplayed(context, ProblemArea.CHALLENGES)) {
+            ChallengeEndOfDayReminderScheduler.scheduleNext(context)
+        }
         WakeWidgetUpdater.updateAll(context)
     }
 }

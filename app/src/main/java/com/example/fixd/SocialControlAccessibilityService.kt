@@ -7,7 +7,6 @@ import android.content.Intent
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.annotation.RequiresApi
@@ -72,7 +71,7 @@ class SocialControlAccessibilityService : AccessibilityService() {
             currentForegroundPackage = packageName
         }
         val settings = SocialControlPreferences.load(this)
-        if (!settings.appControlEnabled) {
+        if (!settings.appControlEnabled || !UserPreferences.isProblemDisplayed(this, ProblemArea.SOCIAL_MEDIA_DISTRACTION)) {
             clearInstagramForegroundWatchdog()
             clearYoutubeForegroundWatchdog()
             hideBlocker()
@@ -113,14 +112,12 @@ class SocialControlAccessibilityService : AccessibilityService() {
         }
         val root = findRootForPackage(YOUTUBE_PACKAGE, event?.source)
         if (root == null) {
-            Log.d(TAG, "YouTube check skipped: no YouTube root found; scheduling recheck")
             scheduleYoutubeRecheck()
             return
         }
         clearYoutubeRechecks()
         val onShortsTab = isNodeSelectedMatchingAny(root, YOUTUBE_SHORTS_TAB_SIGNALS)
         val inShortsViewer = isYoutubeShortsViewer(root, event)
-        Log.d(TAG, "YouTube check: onShortsTab=$onShortsTab inShortsViewer=$inShortsViewer")
         if (onShortsTab || inShortsViewer) {
             redirectYoutubeToHome(root)
             hideBlocker()
@@ -142,14 +139,11 @@ class SocialControlAccessibilityService : AccessibilityService() {
 
         val root = findRootForPackage(INSTAGRAM_PACKAGE, event?.source)
         if (root == null) {
-            Log.d(TAG, "Instagram check skipped: no Instagram root found; scheduling recheck")
             scheduleInstagramRecheck()
             return
         }
         clearInstagramRechecks()
         val inReelViewer = isInstagramReelViewer(root, event)
-
-        Log.d(TAG, "Instagram check: inReelViewer=$inReelViewer")
 
         if (inReelViewer) {
             redirectInstagramToMessages(root, backOutOfViewerFirst = true)
@@ -187,7 +181,6 @@ class SocialControlAccessibilityService : AccessibilityService() {
 
         val clickedMessages = clickNode(findInstagramMessagesTarget(root))
         if (clickedMessages) {
-            Log.d(TAG, "Instagram redirect: clicked Messages tab")
             return true
         }
 
@@ -595,7 +588,6 @@ class SocialControlAccessibilityService : AccessibilityService() {
     }
 
     companion object {
-        private const val TAG = "FixdSocialControl"
         private const val INSTAGRAM_PACKAGE = "com.instagram.android"
         private const val YOUTUBE_PACKAGE = "com.google.android.youtube"
         private val INSTAGRAM_DIRECT_TAB_IDS = listOf(

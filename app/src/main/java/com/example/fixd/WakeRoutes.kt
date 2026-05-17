@@ -57,6 +57,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.google.firebase.auth.FirebaseAuth
+import java.util.Calendar
+import kotlin.math.roundToLong
 
 @Composable
 fun WakeRoute(
@@ -71,6 +73,7 @@ fun WakeRoute(
     var exactAlarmEnabled by remember { mutableStateOf(canScheduleExactAlarms(context)) }
     var editingAlarm by remember { mutableStateOf<WakeAlarm?>(null) }
     var creatingAlarm by remember { mutableStateOf(false) }
+    var sleepHoursInput by remember { mutableStateOf("") }
     var selectedSubmission by remember { mutableStateOf<WakeSubmission?>(null) }
 
     val notificationPermissionLauncher =
@@ -84,8 +87,11 @@ fun WakeRoute(
             userId = user.uid,
             onSuccess = { loaded ->
                 alarms = loaded
+                loaded.firstOrNull { it.isSleepDurationAlarm() && it.sleepDurationHours > 0f }?.let {
+                    sleepHoursInput = formatSleepHours(it.sleepDurationHours)
+                }
                 exactAlarmEnabled = canScheduleExactAlarms(latestContext)
-                LocalAlarmCache.saveAlarms(latestContext, loaded)
+                LocalAlarmCache.saveAlarms(latestContext, user.uid, loaded)
             },
             onFailure = { toast(latestContext, it.localizedMessage ?: latestContext.getString(R.string.firebase_not_ready)) }
         )
@@ -93,7 +99,7 @@ fun WakeRoute(
             userId = user.uid,
             onSuccess = { loaded ->
                 submissions = loaded
-                WakeSubmissionCache.saveSubmissions(latestContext, loaded)
+                WakeSubmissionCache.saveSubmissions(latestContext, user.uid, loaded)
                 WakeWidgetUpdater.updateAll(latestContext)
             },
             onFailure = { toast(latestContext, it.localizedMessage ?: latestContext.getString(R.string.firebase_not_ready)) }
@@ -153,6 +159,46 @@ fun WakeRoute(
         )
     }
 
+    fun saveSleepDurationAlarm(hoursInput: String) {
+        val hours = hoursInput.trim().toFloatOrNull()
+        if (hours == null || hours <= 0f) {
+            toast(context, context.getString(R.string.wake_sleep_duration_invalid))
+            return
+        }
+        if (!canScheduleExactAlarms(context)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                context.startActivity(android.content.Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
+            }
+            return
+        }
+        val user = auth.currentUser ?: return
+        val triggerAt = System.currentTimeMillis() + (hours * 60f * 60f * 1000f).roundToLong()
+        val target = Calendar.getInstance().apply { timeInMillis = triggerAt }
+        val existingSleepAlarm = alarms.firstOrNull { it.isSleepDurationAlarm() }
+        val alarm = (existingSleepAlarm ?: WakeAlarm(id = WakeAlarm.SLEEP_DURATION_ALARM_ID)).copy(
+            name = context.getString(R.string.wake_sleep_duration_alarm_name, formatSleepHours(hours)),
+            hour = target.get(Calendar.HOUR_OF_DAY),
+            minute = target.get(Calendar.MINUTE),
+            repeatDays = listOf(target.get(Calendar.DAY_OF_WEEK)),
+            enabled = true,
+            kind = WakeAlarm.KIND_SLEEP_DURATION,
+            triggerAtMillis = triggerAt,
+            sleepDurationHours = hours
+        )
+        AlarmRepository.saveAlarm(
+            userId = user.uid,
+            alarm = alarm,
+            onSuccess = { saved ->
+                AlarmScheduler.cancel(context, saved.id)
+                AlarmScheduler.schedule(context, saved)
+                sleepHoursInput = formatSleepHours(hours)
+                toast(context, context.getString(R.string.wake_sleep_duration_saved, WakeSubmissionUi.formatAlarmTime(saved.hour, saved.minute)))
+                loadWakeData()
+            },
+            onFailure = { toast(context, it.localizedMessage ?: context.getString(R.string.firebase_not_ready)) }
+        )
+    }
+
     fun deleteAlarm(alarm: WakeAlarm) {
         val user = auth.currentUser ?: return
         AlarmRepository.deleteAlarm(
@@ -177,7 +223,7 @@ fun WakeRoute(
             alarm = updated,
             onSuccess = { saved ->
                 alarms = alarms.map { existing -> if (existing.id == saved.id) saved else existing }
-                LocalAlarmCache.saveAlarms(context, alarms)
+                LocalAlarmCache.saveAlarms(context, user.uid, alarms)
                 if (checked) AlarmScheduler.schedule(context, saved) else AlarmScheduler.cancel(context, saved.id)
                 exactAlarmEnabled = canScheduleExactAlarms(context)
             },
@@ -195,7 +241,7 @@ fun WakeRoute(
                 val updated = submission.copy(wakeStatus = wakeStatus)
                 submissions = submissions.map { existing -> if (existing.id == updated.id) updated else existing }
                 selectedSubmission = updated
-                WakeSubmissionCache.upsertSubmission(context, updated)
+                WakeSubmissionCache.upsertSubmission(context, userId, updated)
                 WakeWidgetUpdater.updateAll(context)
                 if (wakeStatus != "pending") {
                     WakeFollowUpScheduler.cancel(context, userId, submission.id)
@@ -232,7 +278,7 @@ fun WakeRoute(
     LazyColumn(
         modifier = Modifier
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 24.dp),
+            .padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { Spacer(modifier = Modifier.height(18.dp)) }
@@ -273,7 +319,9 @@ fun WakeRoute(
                 Button(
                     onClick = {
                         if (!canScheduleExactAlarms(context)) {
-                            context.startActivity(android.content.Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                context.startActivity(android.content.Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
+                            }
                         } else {
                             creatingAlarm = true
                         }
@@ -281,6 +329,25 @@ fun WakeRoute(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(stringResource(R.string.wake_create_alarm))
+                }
+            }
+        }
+        item {
+            WakeSectionCard(stringResource(R.string.wake_sleep_duration_title), stringResource(R.string.wake_sleep_duration_body)) {
+                OutlinedTextField(
+                    value = sleepHoursInput,
+                    onValueChange = { sleepHoursInput = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.wake_sleep_duration_label)) },
+                    suffix = { Text(stringResource(R.string.wake_sleep_duration_suffix)) }
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = { saveSleepDurationAlarm(sleepHoursInput) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.wake_sleep_duration_button))
                 }
             }
         }
@@ -299,7 +366,7 @@ fun WakeRoute(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { editingAlarm = alarm },
+                        .clickable(enabled = !alarm.isSleepDurationAlarm()) { editingAlarm = alarm },
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
@@ -312,7 +379,15 @@ fun WakeRoute(
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(WakeSubmissionUi.formatAlarmTime(alarm.hour, alarm.minute), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(formatAlarmSchedule(context, alarm.repeatDays), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                text = if (alarm.isSleepDurationAlarm()) {
+                                    formatSleepDurationAlarmDetail(context, alarm)
+                                } else {
+                                    formatAlarmSchedule(context, alarm.repeatDays)
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = stringResource(if (alarm.enabled) R.string.wake_alarm_active else R.string.wake_alarm_inactive),
@@ -418,7 +493,7 @@ fun WakeHistoryRoute() {
                 val updated = submission.copy(wakeStatus = wakeStatus)
                 allSubmissions = allSubmissions.map { existing -> if (existing.id == updated.id) updated else existing }
                 selectedSubmission = updated
-                WakeSubmissionCache.upsertSubmission(context, updated)
+                WakeSubmissionCache.upsertSubmission(context, userId, updated)
                 WakeWidgetUpdater.updateAll(context)
                 if (wakeStatus != "pending") {
                     WakeFollowUpScheduler.cancel(context, userId, submission.id)
@@ -479,7 +554,7 @@ fun WakeHistoryRoute() {
     LazyColumn(
         modifier = Modifier
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 24.dp),
+            .padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
@@ -652,6 +727,22 @@ private fun formatAlarmSchedule(context: Context, days: List<Int>): String {
                 else -> null
             }
         }.joinToString(" | ")
+    }
+}
+
+private fun formatSleepDurationAlarmDetail(context: Context, alarm: WakeAlarm): String {
+    return context.getString(
+        R.string.wake_sleep_duration_alarm_detail,
+        formatSleepHours(alarm.sleepDurationHours),
+        WakeSubmissionUi.formatAlarmTime(alarm.hour, alarm.minute)
+    )
+}
+
+private fun formatSleepHours(hours: Float): String {
+    return if (hours % 1f == 0f) {
+        hours.toInt().toString()
+    } else {
+        String.format(java.util.Locale.US, "%.1f", hours)
     }
 }
 

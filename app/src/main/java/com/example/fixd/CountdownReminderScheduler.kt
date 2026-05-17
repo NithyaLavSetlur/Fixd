@@ -11,15 +11,9 @@ object CountdownReminderScheduler {
         if (countdown.id.isBlank() || countdown.notifyAt <= System.currentTimeMillis()) return
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         cancel(context, countdown.id)
+        if (!UserPreferences.isProblemDisplayed(context, ProblemArea.COUNTDOWN)) return
         val pendingIntent = pendingIntent(context, countdown)
-        when {
-            AlarmScheduler.canScheduleExactAlarms(context) -> {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, countdown.notifyAt, pendingIntent)
-            }
-            else -> {
-                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, countdown.notifyAt, pendingIntent)
-            }
-        }
+        AlarmManagerSupport.scheduleAllowWhileIdle(context, alarmManager, countdown.notifyAt, pendingIntent)
     }
 
     fun cancel(context: Context, countdownId: String) {
